@@ -104,10 +104,16 @@ $(MPIDIR)/GenericIOPrint: $(MPIDIR)/GenericIOPrint.o $(MPIDIR)/GenericIO.o $(MPI
 $(MPIDIR)/GenericIOVerify: $(MPIDIR)/GenericIOVerify.o $(MPIDIR)/GenericIO.o $(MPIDIR)/blosc.o $(MPIDIR)/blosclz.o $(MPIDIR)/shuffle.o
 	$(MPICXX) $(MPI_CFLAGS) -o $@ $^ 
 
+$(MPIDIR)/GenericIOBenchmarkRead: $(MPIDIR)/GenericIOBenchmarkRead.o $(MPIDIR)/GenericIO.o $(MPIDIR)/blosc.o $(MPIDIR)/blosclz.o $(MPIDIR)/shuffle.o
+	$(MPICXX) $(MPI_CFLAGS) -o $@ $^ 
+
+$(MPIDIR)/GenericIOBenchmarkWrite: $(MPIDIR)/GenericIOBenchmarkWrite.o $(MPIDIR)/GenericIO.o $(MPIDIR)/blosc.o $(MPIDIR)/blosclz.o $(MPIDIR)/shuffle.o
+	$(MPICXX) $(MPI_CFLAGS) -o $@ $^ 
+
 frontend-progs: $(FEDIR)/GenericIOPrint $(FEDIR)/GenericIOVerify
 fe-progs: frontend-progs
 
-mpi-progs: $(MPIDIR)/GenericIOPrint $(MPIDIR)/GenericIOVerify
+mpi-progs: $(MPIDIR)/GenericIOPrint $(MPIDIR)/GenericIOVerify $(MPIDIR)/GenericIOBenchmarkRead $(MPIDIR)/GenericIOBenchmarkWrite
 
 frontend-sqlite: $(FEDIR)/GenericIOSQLite.so $(FEDIR)/sqlite3
 fe-sqlite: frontend-sqlite

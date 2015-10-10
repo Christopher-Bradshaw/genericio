@@ -287,7 +287,7 @@ public:
   void readCoords(int Coords[3], int EffRank = -1);
   int readGlobalRankNumber(int EffRank = -1);
 
- void readData(int EffRank = -1, bool PrintStats = true, bool CollStats = true);
+  void readData(int EffRank = -1, bool PrintStats = true, bool CollStats = true);
 
   void close() {
     FH.close();
@@ -318,6 +318,50 @@ public:
 #endif
   }
 #endif
+
+private:
+  // Implementation functions templated on the Endianness of the underlying
+  // data.
+
+#ifndef GENERICIO_NO_MPI
+  template <bool IsBigEndian>
+  void write();
+#endif
+
+  template <bool IsBigEndian>
+  void readHeaderLeader(void *GHPtr, bool MustMatch, int SplitNRanks,
+                        std::string &LocalFileName, uint64_t &HeaderSize,
+                        std::vector<char> &Header);
+
+  template <bool IsBigEndian>
+  int readNRanks();
+
+  template <bool IsBigEndian>
+  void readDims(int Dims[3]);
+
+  template <bool IsBigEndian>
+  uint64_t readTotalNumElems();
+
+  template <bool IsBigEndian>
+  void readPhysOrigin(double Origin[3]);
+
+  template <bool IsBigEndian>
+  void readPhysScale(double Scale[3]);
+
+  template <bool IsBigEndian>
+  int readGlobalRankNumber(int EffRank);
+
+  template <bool IsBigEndian>
+  size_t readNumElems(int EffRank);
+
+  template <bool IsBigEndian>
+  void readCoords(int Coords[3], int EffRank);
+
+  template <bool IsBigEndian>
+  void readData(int EffRank, bool PrintStats, bool CollStats);
+
+  template <bool IsBigEndian>
+  void getVariableInfo(std::vector<VariableInfo> &VI);
 
 protected:
   std::vector<Variable> Vars;
@@ -377,6 +421,14 @@ protected:
       return CountedFH->HeaderCache;
     }
 
+    bool isBigEndian() {
+      return CountedFH ? CountedFH->IsBigEndian : false;
+    }
+
+    void setIsBigEndian(bool isBE) {
+      CountedFH->IsBigEndian = isBE;
+    }
+
     void allocate() {
       close();
       CountedFH = new FHWCnt;
@@ -392,7 +444,7 @@ protected:
     }
 
     struct FHWCnt {
-      FHWCnt() : GFIO(0), Cnt(1) {}
+      FHWCnt() : GFIO(0), Cnt(1), IsBigEndian(false) {}
 
       ~FHWCnt() {
         close();
@@ -410,6 +462,7 @@ public:
 
       // Used for reading
       std::vector<char> HeaderCache;
+      bool IsBigEndian;
     };
 
     FHWCnt *CountedFH;

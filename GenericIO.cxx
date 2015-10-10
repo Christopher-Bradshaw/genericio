@@ -237,29 +237,73 @@ static bool isBigEndian() {
   return !(*((char *)(&one)));
 }
 
+static void bswap(void *v, size_t s) {
+  char *p = (char *) v;
+  for (size_t i = 0; i < s/2; ++i)
+    std::swap(p[i], p[s - (i+1)]);
+}
+
+// Using #pragma pack here, instead of __attribute__((packed)) because xlc, at
+// least as of v12.1, won't take __attribute__((packed)) on non-POD and/or
+// templated types.
+#pragma pack(1)
+
+template <typename T, bool IsBigEndian>
+struct endian_specific_value {
+  operator T() const {
+    T rvalue = value;
+    if (IsBigEndian != isBigEndian())
+      bswap(&rvalue, sizeof(T));
+
+    return rvalue;
+  };
+
+  endian_specific_value &operator = (T nvalue) {
+    if (IsBigEndian != isBigEndian())
+      bswap(&nvalue, sizeof(T));
+
+    value = nvalue;
+    return *this;
+  }
+
+  endian_specific_value &operator += (T nvalue) {
+    *this = *this + nvalue;
+    return *this;
+  }
+
+  endian_specific_value &operator -= (T nvalue) {
+    *this = *this - nvalue;
+    return *this;
+  }
+
+private:
+  T value;
+};
+
 static const size_t CRCSize = 8;
 
 static const size_t MagicSize = 8;
 static const char *MagicBE = "HACC01B";
 static const char *MagicLE = "HACC01L";
 
+template <bool IsBigEndian>
 struct GlobalHeader {
   char Magic[MagicSize];
-  uint64_t HeaderSize;
-  uint64_t NElems; // The global total
-  uint64_t Dims[3];
-  uint64_t NVars;
-  uint64_t VarsSize;
-  uint64_t VarsStart;
-  uint64_t NRanks;
-  uint64_t RanksSize;
-  uint64_t RanksStart;
-  uint64_t GlobalHeaderSize;
-  double   PhysOrigin[3];
-  double   PhysScale[3];
-  uint64_t BlocksSize;
-  uint64_t BlocksStart;
-} __attribute__((packed));
+  endian_specific_value<uint64_t, IsBigEndian> HeaderSize;
+  endian_specific_value<uint64_t, IsBigEndian> NElems; // The global total
+  endian_specific_value<uint64_t, IsBigEndian> Dims[3];
+  endian_specific_value<uint64_t, IsBigEndian> NVars;
+  endian_specific_value<uint64_t, IsBigEndian> VarsSize;
+  endian_specific_value<uint64_t, IsBigEndian> VarsStart;
+  endian_specific_value<uint64_t, IsBigEndian> NRanks;
+  endian_specific_value<uint64_t, IsBigEndian> RanksSize;
+  endian_specific_value<uint64_t, IsBigEndian> RanksStart;
+  endian_specific_value<uint64_t, IsBigEndian> GlobalHeaderSize;
+  endian_specific_value<double,   IsBigEndian> PhysOrigin[3];
+  endian_specific_value<double,   IsBigEndian> PhysScale[3];
+  endian_specific_value<uint64_t, IsBigEndian> BlocksSize;
+  endian_specific_value<uint64_t, IsBigEndian> BlocksStart;
+};
 
 enum {
   FloatValue          = (1 << 0),
@@ -271,31 +315,37 @@ enum {
 };
 
 static const size_t NameSize = 256;
+template <bool IsBigEndian>
 struct VariableHeader {
   char Name[NameSize];
-  uint64_t Flags;
-  uint64_t Size;
-} __attribute__((packed));
+  endian_specific_value<uint64_t, IsBigEndian> Flags;
+  endian_specific_value<uint64_t, IsBigEndian> Size;
+};
 
+template <bool IsBigEndian>
 struct RankHeader {
-  uint64_t Coords[3];
-  uint64_t NElems;
-  uint64_t Start;
-  uint64_t GlobalRank;
-} __attribute__((packed));
+  endian_specific_value<uint64_t, IsBigEndian> Coords[3];
+  endian_specific_value<uint64_t, IsBigEndian> NElems;
+  endian_specific_value<uint64_t, IsBigEndian> Start;
+  endian_specific_value<uint64_t, IsBigEndian> GlobalRank;
+};
 
 static const size_t FilterNameSize = 8;
 static const size_t MaxFilters = 4;
+template <bool IsBigEndian>
 struct BlockHeader {
   char Filters[MaxFilters][FilterNameSize];
-  uint64_t Start;
-  uint64_t Size;
-} __attribute__((packed));
+  endian_specific_value<uint64_t, IsBigEndian> Start;
+  endian_specific_value<uint64_t, IsBigEndian> Size;
+};
 
+template <bool IsBigEndian>
 struct CompressHeader {
-  uint64_t OrigCRC;
-} __attribute__((packed));
+  endian_specific_value<uint64_t, IsBigEndian> OrigCRC;
+};
 const char *CompressName = "BLOSC";
+
+#pragma pack()
 
 unsigned GenericIO::DefaultFileIOType = FileIOPOSIX;
 int GenericIO::DefaultPartition = 0;
@@ -308,10 +358,18 @@ std::size_t GenericIO::CollectiveMPIIOThreshold = 0;
 static bool blosc_initialized = false;
 
 #ifndef GENERICIO_NO_MPI
+void GenericIO::write() {
+  if (isBigEndian())
+    write<true>();
+  else
+    write<false>();
+}
+
 // Note: writing errors are not currently recoverable (one rank may fail
 // while the others don't).
+template <bool IsBigEndian>
 void GenericIO::write() {
-  const char *Magic = isBigEndian() ? MagicBE : MagicLE;
+  const char *Magic = IsBigEndian ? MagicBE : MagicLE;
 
   uint64_t FileSize = 0;
 
@@ -382,7 +440,7 @@ void GenericIO::write() {
     LocalFileName = FileName;
   }
 
-  RankHeader RHLocal;
+  RankHeader<IsBigEndian> RHLocal;
   int Dims[3], Periods[3], Coords[3];
 
   int TopoStatus;
@@ -416,7 +474,7 @@ void GenericIO::write() {
     NeedsBlockHeaders = (Mod > 0);
   }
 
-  vector<BlockHeader> LocalBlockHeaders;
+  vector<BlockHeader<IsBigEndian> > LocalBlockHeaders;
   vector<void *> LocalData;
   vector<bool> LocalHasExtraSpace;
   vector<vector<unsigned char> > LocalCData;
@@ -430,11 +488,11 @@ void GenericIO::write() {
     for (size_t i = 0; i < Vars.size(); ++i) {
       // Filters null by default, leave null starting address (needs to be
       // calculated by the header-writing rank).
-      memset(&LocalBlockHeaders[i], 0, sizeof(BlockHeader));
+      memset(&LocalBlockHeaders[i], 0, sizeof(BlockHeader<IsBigEndian>));
       if (ShouldCompress) {
-        LocalCData[i].resize(sizeof(CompressHeader));
+        LocalCData[i].resize(sizeof(CompressHeader<IsBigEndian>));
 
-        CompressHeader *CH = (CompressHeader*) &LocalCData[i][0];
+        CompressHeader<IsBigEndian> *CH = (CompressHeader<IsBigEndian>*) &LocalCData[i][0];
         CH->OrigCRC = crc64_omp(Vars[i].Data, Vars[i].Size*NElems);
 
 #ifdef _OPENMP
@@ -454,15 +512,15 @@ void GenericIO::write() {
 
         LocalCData[i].resize(LocalCData[i].size() + NElems*Vars[i].Size);
         if (blosc_compress(9, 1, Vars[i].Size, NElems*Vars[i].Size, Vars[i].Data,
-                           &LocalCData[i][0] + sizeof(CompressHeader),
+                           &LocalCData[i][0] + sizeof(CompressHeader<IsBigEndian>),
                            NElems*Vars[i].Size) <= 0)
           goto nocomp;
 
         strncpy(LocalBlockHeaders[i].Filters[0], CompressName, FilterNameSize);
         size_t CNBytes, CCBytes, CBlockSize;
-        blosc_cbuffer_sizes(&LocalCData[i][0] + sizeof(CompressHeader),
+        blosc_cbuffer_sizes(&LocalCData[i][0] + sizeof(CompressHeader<IsBigEndian>),
                             &CNBytes, &CCBytes, &CBlockSize);
-        LocalCData[i].resize(CCBytes + sizeof(CompressHeader));
+        LocalCData[i].resize(CCBytes + sizeof(CompressHeader<IsBigEndian>));
 
         LocalBlockHeaders[i].Size = LocalCData[i].size();
         LocalCData[i].resize(LocalCData[i].size() + CRCSize);
@@ -480,46 +538,48 @@ nocomp:
   double StartTime = MPI_Wtime();
 
   if (SplitRank == 0) {
-    uint64_t HeaderSize = sizeof(GlobalHeader) + Vars.size()*sizeof(VariableHeader) +
-                          SplitNRanks*sizeof(RankHeader) + CRCSize;
+    uint64_t HeaderSize = sizeof(GlobalHeader<IsBigEndian>) + Vars.size()*sizeof(VariableHeader<IsBigEndian>) +
+                          SplitNRanks*sizeof(RankHeader<IsBigEndian>) + CRCSize;
     if (NeedsBlockHeaders)
-      HeaderSize += SplitNRanks*Vars.size()*sizeof(BlockHeader);
+      HeaderSize += SplitNRanks*Vars.size()*sizeof(BlockHeader<IsBigEndian>);
 
     vector<char> Header(HeaderSize, 0);
-    GlobalHeader *GH = (GlobalHeader *) &Header[0];
+    GlobalHeader<IsBigEndian> *GH = (GlobalHeader<IsBigEndian> *) &Header[0];
     std::copy(Magic, Magic + MagicSize, GH->Magic);
     GH->HeaderSize = HeaderSize - CRCSize;
     GH->NElems = NElems; // This will be updated later
     std::copy(Dims, Dims + 3, GH->Dims);
     GH->NVars = Vars.size();
-    GH->VarsSize = sizeof(VariableHeader);
-    GH->VarsStart = sizeof(GlobalHeader);
+    GH->VarsSize = sizeof(VariableHeader<IsBigEndian>);
+    GH->VarsStart = sizeof(GlobalHeader<IsBigEndian>);
     GH->NRanks = SplitNRanks;
-    GH->RanksSize = sizeof(RankHeader);
-    GH->RanksStart = GH->VarsStart + Vars.size()*sizeof(VariableHeader);
-    GH->GlobalHeaderSize = sizeof(GlobalHeader);
+    GH->RanksSize = sizeof(RankHeader<IsBigEndian>);
+    GH->RanksStart = GH->VarsStart + Vars.size()*sizeof(VariableHeader<IsBigEndian>);
+    GH->GlobalHeaderSize = sizeof(GlobalHeader<IsBigEndian>);
     std::copy(PhysOrigin, PhysOrigin + 3, GH->PhysOrigin);
     std::copy(PhysScale,  PhysScale  + 3, GH->PhysScale);
     if (!NeedsBlockHeaders) {
       GH->BlocksSize = GH->BlocksStart = 0;
     } else {
-      GH->BlocksSize = sizeof(BlockHeader);
-      GH->BlocksStart = GH->RanksStart + SplitNRanks*sizeof(RankHeader);
+      GH->BlocksSize = sizeof(BlockHeader<IsBigEndian>);
+      GH->BlocksStart = GH->RanksStart + SplitNRanks*sizeof(RankHeader<IsBigEndian>);
     }
 
     uint64_t RecordSize = 0;
-    VariableHeader *VH = (VariableHeader *) &Header[GH->VarsStart];
+    VariableHeader<IsBigEndian> *VH = (VariableHeader<IsBigEndian> *) &Header[GH->VarsStart];
     for (size_t i = 0; i < Vars.size(); ++i, ++VH) {
       string VName(Vars[i].Name);
       VName.resize(NameSize);
 
       std::copy(VName.begin(), VName.end(), VH->Name);
-      if (Vars[i].IsFloat)  VH->Flags |= FloatValue;
-      if (Vars[i].IsSigned) VH->Flags |= SignedValue;
-      if (Vars[i].IsPhysCoordX) VH->Flags |= ValueIsPhysCoordX;
-      if (Vars[i].IsPhysCoordY) VH->Flags |= ValueIsPhysCoordY;
-      if (Vars[i].IsPhysCoordZ) VH->Flags |= ValueIsPhysCoordZ;
-      if (Vars[i].MaybePhysGhost) VH->Flags |= ValueMaybePhysGhost;
+      uint64_t VFlags = 0;
+      if (Vars[i].IsFloat)  VFlags |= FloatValue;
+      if (Vars[i].IsSigned) VFlags |= SignedValue;
+      if (Vars[i].IsPhysCoordX) VFlags |= ValueIsPhysCoordX;
+      if (Vars[i].IsPhysCoordY) VFlags |= ValueIsPhysCoordY;
+      if (Vars[i].IsPhysCoordZ) VFlags |= ValueIsPhysCoordZ;
+      if (Vars[i].MaybePhysGhost) VFlags |= ValueMaybePhysGhost;
+      VH->Flags = VFlags;
       RecordSize += VH->Size = Vars[i].Size;
     }
 
@@ -529,12 +589,12 @@ nocomp:
 
     if (NeedsBlockHeaders) {
       MPI_Gather(&LocalBlockHeaders[0],
-                 Vars.size()*sizeof(BlockHeader), MPI_BYTE,
+                 Vars.size()*sizeof(BlockHeader<IsBigEndian>), MPI_BYTE,
                  &Header[GH->BlocksStart],
-                 Vars.size()*sizeof(BlockHeader), MPI_BYTE,
+                 Vars.size()*sizeof(BlockHeader<IsBigEndian>), MPI_BYTE,
                  0, SplitComm);
 
-      BlockHeader *BH = (BlockHeader *) &Header[GH->BlocksStart];
+      BlockHeader<IsBigEndian> *BH = (BlockHeader<IsBigEndian> *) &Header[GH->BlocksStart];
       for (int i = 0; i < SplitNRanks; ++i)
       for (size_t j = 0; j < Vars.size(); ++j, ++BH) {
         if (i == 0 && j == 0)
@@ -543,11 +603,11 @@ nocomp:
           BH->Start = BH[-1].Start + BH[-1].Size + CRCSize;
       }
 
-      RankHeader *RH = (RankHeader *) &Header[GH->RanksStart];
+      RankHeader<IsBigEndian> *RH = (RankHeader<IsBigEndian> *) &Header[GH->RanksStart];
       RH->Start = HeaderSize; ++RH;
       for (int i = 1; i < SplitNRanks; ++i, ++RH) {
         RH->Start =
-          ((BlockHeader *) &Header[GH->BlocksStart])[i*Vars.size()].Start;
+          ((BlockHeader<IsBigEndian> *) &Header[GH->BlocksStart])[i*Vars.size()].Start;
         GH->NElems += RH->NElems;
       }
 
@@ -555,7 +615,7 @@ nocomp:
       uint64_t LastData = BH[-1].Size + CRCSize;
       FileSize = BH[-1].Start + LastData;
     } else {
-      RankHeader *RH = (RankHeader *) &Header[GH->RanksStart];
+      RankHeader<IsBigEndian> *RH = (RankHeader<IsBigEndian> *) &Header[GH->RanksStart];
       RH->Start = HeaderSize; ++RH;
       for (int i = 1; i < SplitNRanks; ++i, ++RH) {
         uint64_t PrevNElems = RH[-1].NElems;
@@ -577,9 +637,9 @@ nocomp:
 
     if (NeedsBlockHeaders)
       MPI_Scatter(&Header[GH->BlocksStart],
-                  sizeof(BlockHeader)*Vars.size(), MPI_BYTE,
+                  sizeof(BlockHeader<IsBigEndian>)*Vars.size(), MPI_BYTE,
                   &LocalBlockHeaders[0],
-                  sizeof(BlockHeader)*Vars.size(), MPI_BYTE,
+                  sizeof(BlockHeader<IsBigEndian>)*Vars.size(), MPI_BYTE,
                   0, SplitComm);
 
     uint64_t HeaderCRC = crc64_omp(&Header[0], HeaderSize - CRCSize);
@@ -600,11 +660,11 @@ nocomp:
   } else {
     MPI_Gather(&RHLocal, sizeof(RHLocal), MPI_BYTE, 0, 0, MPI_BYTE, 0, SplitComm);
     if (NeedsBlockHeaders)
-      MPI_Gather(&LocalBlockHeaders[0], Vars.size()*sizeof(BlockHeader),
+      MPI_Gather(&LocalBlockHeaders[0], Vars.size()*sizeof(BlockHeader<IsBigEndian>),
                  MPI_BYTE, 0, 0, MPI_BYTE, 0, SplitComm);
     MPI_Scatter(0, 0, MPI_BYTE, &RHLocal, sizeof(RHLocal), MPI_BYTE, 0, SplitComm);
     if (NeedsBlockHeaders)
-      MPI_Scatter(0, 0, MPI_BYTE, &LocalBlockHeaders[0], sizeof(BlockHeader)*Vars.size(),
+      MPI_Scatter(0, 0, MPI_BYTE, &LocalBlockHeaders[0], sizeof(BlockHeader<IsBigEndian>)*Vars.size(),
                   MPI_BYTE, 0, SplitComm);
   }
 
@@ -677,12 +737,60 @@ nocomp:
 }
 #endif // GENERICIO_NO_MPI
 
+template <bool IsBigEndian>
+void GenericIO::readHeaderLeader(void *GHPtr, bool MustMatch, int SplitNRanks,
+                                 string &LocalFileName, uint64_t &HeaderSize, vector<char> &Header) {
+  GlobalHeader<IsBigEndian> &GH = *(GlobalHeader<IsBigEndian> *) GHPtr;
+
+  if (MustMatch) {
+    if (SplitNRanks != (int) GH.NRanks) {
+      stringstream ss;
+      ss << "Won't read " << LocalFileName << ": communicator-size mismatch: " <<
+            "current: " << SplitNRanks << ", file: " << GH.NRanks;
+      throw runtime_error(ss.str());
+    }
+
+#ifndef GENERICIO_NO_MPI
+    int TopoStatus;
+    MPI_Topo_test(Comm, &TopoStatus);
+    if (TopoStatus == MPI_CART) {
+      int Dims[3], Periods[3], Coords[3];
+      MPI_Cart_get(Comm, 3, Dims, Periods, Coords);
+
+      bool DimsMatch = true;
+      for (int i = 0; i < 3; ++i) {
+        if ((uint64_t) Dims[i] != GH.Dims[i]) {
+          DimsMatch = false;
+          break;
+        }
+      }
+
+      if (!DimsMatch) {
+        stringstream ss;
+        ss << "Won't read " << LocalFileName <<
+              ": communicator-decomposition mismatch: " <<
+              "current: " << Dims[0] << "x" << Dims[1] << "x" << Dims[2] <<
+              ", file: " << GH.Dims[0] << "x" << GH.Dims[1] << "x" <<
+              GH.Dims[2];
+        throw runtime_error(ss.str());
+      }
+    }
+#endif
+  }
+
+  HeaderSize = GH.HeaderSize;
+  Header.resize(HeaderSize + CRCSize, 0xFE /* poison */);
+  FH.get()->read(&Header[0], HeaderSize + CRCSize, 0, "header");
+
+  uint64_t CRC = crc64_omp(&Header[0], HeaderSize + CRCSize);
+  if (CRC != (uint64_t) -1) {
+    throw runtime_error("Header CRC check failed: " + LocalFileName);
+  }
+}
+
 // Note: Errors from this function should be recoverable. This means that if
 // one rank throws an exception, then all ranks should.
 void GenericIO::openAndReadHeader(bool MustMatch, int EffRank, bool CheckPartMap) {
-  const char *Magic = isBigEndian() ? MagicBE : MagicLE;
-  const char *MagicInv = isBigEndian() ? MagicLE : MagicBE;
-
   int NRanks, Rank;
 #ifndef GENERICIO_NO_MPI
   MPI_Comm_rank(Comm, &Rank);
@@ -784,62 +892,18 @@ void GenericIO::openAndReadHeader(bool MustMatch, int EffRank, bool CheckPartMap
     try {
       FH.get()->open(LocalFileName, true);
 
-      GlobalHeader GH;
-      FH.get()->read(&GH, sizeof(GlobalHeader), 0, "global header");
+      GlobalHeader<false> GH; // endianness does not matter yet...
+      FH.get()->read(&GH, sizeof(GlobalHeader<false>), 0, "global header");
 
-      if (string(GH.Magic, GH.Magic + MagicSize - 1) != Magic) {
-        string Error;
-        if (string(GH.Magic, GH.Magic + MagicSize - 1) == MagicInv) {
-          Error = "wrong endianness";
-        } else {
-          Error = "invalid file-type identifier";
-        }
+      if (string(GH.Magic, GH.Magic + MagicSize - 1) == MagicLE) {
+        readHeaderLeader<false>(&GH, MustMatch, SplitNRanks, LocalFileName,
+                                HeaderSize, Header);
+      } else if (string(GH.Magic, GH.Magic + MagicSize - 1) == MagicBE) {
+        readHeaderLeader<true>(&GH, MustMatch, SplitNRanks, LocalFileName,
+                               HeaderSize, Header);
+      } else {
+        string Error = "invalid file-type identifier";
         throw runtime_error("Won't read " + LocalFileName + ": " + Error);
-      }
-
-      if (MustMatch) {
-        if (SplitNRanks != (int) GH.NRanks) {
-          stringstream ss;
-          ss << "Won't read " << LocalFileName << ": communicator-size mismatch: " <<
-                "current: " << SplitNRanks << ", file: " << GH.NRanks;
-          throw runtime_error(ss.str());
-        }
-
-#ifndef GENERICIO_NO_MPI
-        int TopoStatus;
-        MPI_Topo_test(Comm, &TopoStatus);
-        if (TopoStatus == MPI_CART) {
-          int Dims[3], Periods[3], Coords[3];
-          MPI_Cart_get(Comm, 3, Dims, Periods, Coords);
-
-          bool DimsMatch = true;
-          for (int i = 0; i < 3; ++i) {
-            if ((uint64_t) Dims[i] != GH.Dims[i]) {
-              DimsMatch = false;
-              break;
-            }
-          }
-
-          if (!DimsMatch) {
-            stringstream ss;
-            ss << "Won't read " << LocalFileName <<
-                  ": communicator-decomposition mismatch: " <<
-                  "current: " << Dims[0] << "x" << Dims[1] << "x" << Dims[2] <<
-                  ", file: " << GH.Dims[0] << "x" << GH.Dims[1] << "x" <<
-                  GH.Dims[2];
-            throw runtime_error(ss.str());
-          }
-        }
-#endif
-      }
-
-      HeaderSize = GH.HeaderSize;
-      Header.resize(HeaderSize + CRCSize, 0xFE /* poison */);
-      FH.get()->read(&Header[0], HeaderSize + CRCSize, 0, "header");
-
-      uint64_t CRC = crc64_omp(&Header[0], HeaderSize + CRCSize);
-      if (CRC != (uint64_t) -1) {
-        throw runtime_error("Header CRC check failed: " + LocalFileName);
       }
 
 #ifndef GENERICIO_NO_MPI
@@ -871,7 +935,12 @@ void GenericIO::openAndReadHeader(bool MustMatch, int EffRank, bool CheckPartMap
   MPI_Bcast(&Header[0], HeaderSize, MPI_BYTE, 0, SplitComm);
 #endif
 
+
   FH.getHeaderCache().clear();
+
+  GlobalHeader<false> *GH = (GlobalHeader<false> *) &Header[0];
+  FH.setIsBigEndian(string(GH->Magic, GH->Magic + MagicSize - 1) == MagicBE);
+
   FH.getHeaderCache().swap(Header);
   OpenFileName = LocalFileName;
 
@@ -904,33 +973,67 @@ void GenericIO::openAndReadHeader(bool MustMatch, int EffRank, bool CheckPartMap
 }
 
 int GenericIO::readNRanks() {
+  if (FH.isBigEndian())
+    return readNRanks<true>();
+  return readNRanks<false>();
+}
+
+template <bool IsBigEndian>
+int GenericIO::readNRanks() {
   if (RankMap.size())
     return RankMap.size();
 
   assert(FH.getHeaderCache().size() && "HeaderCache must not be empty");
-  GlobalHeader *GH = (GlobalHeader *) &FH.getHeaderCache()[0];
+  GlobalHeader<IsBigEndian> *GH = (GlobalHeader<IsBigEndian> *) &FH.getHeaderCache()[0];
   return (int) GH->NRanks;
 }
 
 void GenericIO::readDims(int Dims[3]) {
+  if (FH.isBigEndian())
+    readDims<true>(Dims);
+  else
+    readDims<false>(Dims);
+}
+
+template <bool IsBigEndian>
+void GenericIO::readDims(int Dims[3]) {
   assert(FH.getHeaderCache().size() && "HeaderCache must not be empty");
-  GlobalHeader *GH = (GlobalHeader *) &FH.getHeaderCache()[0];
+  GlobalHeader<IsBigEndian> *GH = (GlobalHeader<IsBigEndian> *) &FH.getHeaderCache()[0];
   std::copy(GH->Dims, GH->Dims + 3, Dims);
 }
 
+uint64_t GenericIO::readTotalNumElems() {
+  if (FH.isBigEndian())
+    return readTotalNumElems<true>();
+  return readTotalNumElems<false>();
+}
+
+template <bool IsBigEndian>
 uint64_t GenericIO::readTotalNumElems() {
   if (RankMap.size())
     return (uint64_t) -1;
 
   assert(FH.getHeaderCache().size() && "HeaderCache must not be empty");
-  GlobalHeader *GH = (GlobalHeader *) &FH.getHeaderCache()[0];
+  GlobalHeader<IsBigEndian> *GH = (GlobalHeader<IsBigEndian> *) &FH.getHeaderCache()[0];
   return GH->NElems;
 }
 
 void GenericIO::readPhysOrigin(double Origin[3]) {
+  if (FH.isBigEndian())
+    readPhysOrigin<true>(Origin);
+  else
+    readPhysOrigin<false>(Origin);
+}
+
+// Define a "safe" version of offsetof (offsetof itself might not work for
+// non-POD types, and at least xlC v12.1 will complain about this if you try).
+#define offsetof_safe(S, F) (size_t(&(S)->F) - size_t(S))
+
+template <bool IsBigEndian>
+void GenericIO::readPhysOrigin(double Origin[3]) {
   assert(FH.getHeaderCache().size() && "HeaderCache must not be empty");
-  GlobalHeader *GH = (GlobalHeader *) &FH.getHeaderCache()[0];
-  if (offsetof(GlobalHeader, PhysOrigin) >= GH->GlobalHeaderSize) {
+  GlobalHeader<IsBigEndian> *GH = (GlobalHeader<IsBigEndian> *) &FH.getHeaderCache()[0];
+  if (offsetof_safe(GH, PhysOrigin) >= GH->GlobalHeaderSize) {
     std::fill(Origin, Origin + 3, 0.0);
     return;
   }
@@ -939,9 +1042,17 @@ void GenericIO::readPhysOrigin(double Origin[3]) {
 }
 
 void GenericIO::readPhysScale(double Scale[3]) {
+  if (FH.isBigEndian())
+    readPhysScale<true>(Scale);
+  else
+    readPhysScale<false>(Scale);
+}
+
+template <bool IsBigEndian>
+void GenericIO::readPhysScale(double Scale[3]) {
   assert(FH.getHeaderCache().size() && "HeaderCache must not be empty");
-  GlobalHeader *GH = (GlobalHeader *) &FH.getHeaderCache()[0];
-  if (offsetof(GlobalHeader, PhysScale) >= GH->GlobalHeaderSize) {
+  GlobalHeader<IsBigEndian> *GH = (GlobalHeader<IsBigEndian> *) &FH.getHeaderCache()[0];
+  if (offsetof_safe(GH, PhysScale) >= GH->GlobalHeaderSize) {
     std::fill(Scale, Scale + 3, 0.0);
     return;
   }
@@ -949,14 +1060,18 @@ void GenericIO::readPhysScale(double Scale[3]) {
   std::copy(GH->PhysScale, GH->PhysScale + 3, Scale);
 }
 
-static size_t getRankIndex(int EffRank, GlobalHeader *GH,
+template <bool IsBigEndian>
+static size_t getRankIndex(int EffRank, GlobalHeader<IsBigEndian> *GH,
                            vector<int> &RankMap, vector<char> &HeaderCache) {
-  if (offsetof(RankHeader, GlobalRank) >= GH->RanksSize || RankMap.empty())
+  if (RankMap.empty())
     return EffRank;
 
   for (size_t i = 0; i < GH->NRanks; ++i) {
-    RankHeader *RH = (RankHeader *) &HeaderCache[GH->RanksStart +
+    RankHeader<IsBigEndian> *RH = (RankHeader<IsBigEndian> *) &HeaderCache[GH->RanksStart +
                                                  i*GH->RanksSize];
+    if (offsetof_safe(RH, GlobalRank) >= GH->RanksSize)
+      return EffRank;
+
     if ((int) RH->GlobalRank == EffRank)
       return i;
   }
@@ -965,6 +1080,13 @@ static size_t getRankIndex(int EffRank, GlobalHeader *GH,
   return (size_t) -1;
 }
 
+int GenericIO::readGlobalRankNumber(int EffRank) {
+  if (FH.isBigEndian())
+    return readGlobalRankNumber<true>(EffRank);
+  return readGlobalRankNumber<false>(EffRank);
+}
+
+template <bool IsBigEndian>
 int GenericIO::readGlobalRankNumber(int EffRank) {
   if (EffRank == -1) {
 #ifndef GENERICIO_NO_MPI
@@ -978,20 +1100,27 @@ int GenericIO::readGlobalRankNumber(int EffRank) {
 
   assert(FH.getHeaderCache().size() && "HeaderCache must not be empty");
 
-  GlobalHeader *GH = (GlobalHeader *) &FH.getHeaderCache()[0];
-  size_t RankIndex = getRankIndex(EffRank, GH, RankMap, FH.getHeaderCache());
+  GlobalHeader<IsBigEndian> *GH = (GlobalHeader<IsBigEndian> *) &FH.getHeaderCache()[0];
+  size_t RankIndex = getRankIndex<IsBigEndian>(EffRank, GH, RankMap, FH.getHeaderCache());
 
   assert(RankIndex < GH->NRanks && "Invalid rank specified");
 
-  if (offsetof(RankHeader, GlobalRank) >= GH->RanksSize)
-    return EffRank;
-
-  RankHeader *RH = (RankHeader *) &FH.getHeaderCache()[GH->RanksStart +
+  RankHeader<IsBigEndian> *RH = (RankHeader<IsBigEndian> *) &FH.getHeaderCache()[GH->RanksStart +
                                                RankIndex*GH->RanksSize];
+
+  if (offsetof_safe(RH, GlobalRank) >= GH->RanksSize)
+    return EffRank;
 
   return (int) RH->GlobalRank;
 }
 
+size_t GenericIO::readNumElems(int EffRank) {
+  if (FH.isBigEndian())
+    return readNumElems<true>(EffRank);
+  return readNumElems<false>(EffRank);
+}
+
+template <bool IsBigEndian>
 size_t GenericIO::readNumElems(int EffRank) {
   if (EffRank == -1) {
 #ifndef GENERICIO_NO_MPI
@@ -1005,16 +1134,24 @@ size_t GenericIO::readNumElems(int EffRank) {
 
   assert(FH.getHeaderCache().size() && "HeaderCache must not be empty");
 
-  GlobalHeader *GH = (GlobalHeader *) &FH.getHeaderCache()[0];
-  size_t RankIndex = getRankIndex(EffRank, GH, RankMap, FH.getHeaderCache());
+  GlobalHeader<IsBigEndian> *GH = (GlobalHeader<IsBigEndian> *) &FH.getHeaderCache()[0];
+  size_t RankIndex = getRankIndex<IsBigEndian>(EffRank, GH, RankMap, FH.getHeaderCache());
 
   assert(RankIndex < GH->NRanks && "Invalid rank specified");
 
-  RankHeader *RH = (RankHeader *) &FH.getHeaderCache()[GH->RanksStart +
+  RankHeader<IsBigEndian> *RH = (RankHeader<IsBigEndian> *) &FH.getHeaderCache()[GH->RanksStart +
                                                RankIndex*GH->RanksSize];
   return (size_t) RH->NElems;
 }
 
+void GenericIO::readCoords(int Coords[3], int EffRank) {
+  if (FH.isBigEndian())
+    readCoords<true>(Coords, EffRank);
+  else
+    readCoords<false>(Coords, EffRank);
+}
+
+template <bool IsBigEndian>
 void GenericIO::readCoords(int Coords[3], int EffRank) {
   if (EffRank == -1) {
 #ifndef GENERICIO_NO_MPI
@@ -1028,19 +1165,27 @@ void GenericIO::readCoords(int Coords[3], int EffRank) {
 
   assert(FH.getHeaderCache().size() && "HeaderCache must not be empty");
 
-  GlobalHeader *GH = (GlobalHeader *) &FH.getHeaderCache()[0];
-  size_t RankIndex = getRankIndex(EffRank, GH, RankMap, FH.getHeaderCache());
+  GlobalHeader<IsBigEndian> *GH = (GlobalHeader<IsBigEndian> *) &FH.getHeaderCache()[0];
+  size_t RankIndex = getRankIndex<IsBigEndian>(EffRank, GH, RankMap, FH.getHeaderCache());
 
   assert(RankIndex < GH->NRanks && "Invalid rank specified");
 
-  RankHeader *RH = (RankHeader *) &FH.getHeaderCache()[GH->RanksStart +
+  RankHeader<IsBigEndian> *RH = (RankHeader<IsBigEndian> *) &FH.getHeaderCache()[GH->RanksStart +
                                                RankIndex*GH->RanksSize];
 
   std::copy(RH->Coords, RH->Coords + 3, Coords);
 }
 
+void GenericIO::readData(int EffRank, bool PrintStats, bool CollStats) {
+  if (FH.isBigEndian())
+    readData<true>(EffRank, PrintStats, CollStats);
+  else
+    readData<false>(EffRank, PrintStats, CollStats);
+}
+
 // Note: Errors from this function should be recoverable. This means that if
 // one rank throws an exception, then all ranks should.
+template <bool IsBigEndian>
 void GenericIO::readData(int EffRank, bool PrintStats, bool CollStats) {
   int Rank;
 #ifndef GENERICIO_NO_MPI
@@ -1056,12 +1201,12 @@ void GenericIO::readData(int EffRank, bool PrintStats, bool CollStats) {
   if (EffRank == -1)
     EffRank = Rank;
 
-  GlobalHeader *GH = (GlobalHeader *) &FH.getHeaderCache()[0];
-  size_t RankIndex = getRankIndex(EffRank, GH, RankMap, FH.getHeaderCache());
+  GlobalHeader<IsBigEndian> *GH = (GlobalHeader<IsBigEndian> *) &FH.getHeaderCache()[0];
+  size_t RankIndex = getRankIndex<IsBigEndian>(EffRank, GH, RankMap, FH.getHeaderCache());
 
   assert(RankIndex < GH->NRanks && "Invalid rank specified");
 
-  RankHeader *RH = (RankHeader *) &FH.getHeaderCache()[GH->RanksStart +
+  RankHeader<IsBigEndian> *RH = (RankHeader<IsBigEndian> *) &FH.getHeaderCache()[GH->RanksStart +
                                                RankIndex*GH->RanksSize];
 
   uint64_t TotalReadSize = 0;
@@ -1076,7 +1221,7 @@ void GenericIO::readData(int EffRank, bool PrintStats, bool CollStats) {
     uint64_t Offset = RH->Start;
     bool VarFound = false;
     for (uint64_t j = 0; j < GH->NVars; ++j) {
-      VariableHeader *VH = (VariableHeader *) &FH.getHeaderCache()[GH->VarsStart +
+      VariableHeader<IsBigEndian> *VH = (VariableHeader<IsBigEndian> *) &FH.getHeaderCache()[GH->VarsStart +
                                                            j*GH->VarsSize];
 
       string VName(VH->Name, VH->Name + NameSize);
@@ -1120,9 +1265,9 @@ void GenericIO::readData(int EffRank, bool PrintStats, bool CollStats) {
       vector<unsigned char> LData;
       void *Data = Vars[i].Data;
       bool HasExtraSpace = Vars[i].HasExtraSpace;
-      if (offsetof(GlobalHeader, BlocksStart) < GH->GlobalHeaderSize &&
+      if (offsetof_safe(GH, BlocksStart) < GH->GlobalHeaderSize &&
           GH->BlocksSize > 0) {
-        BlockHeader *BH = (BlockHeader *)
+        BlockHeader<IsBigEndian> *BH = (BlockHeader<IsBigEndian> *)
           &FH.getHeaderCache()[GH->BlocksStart +
                                (RankIndex*GH->NVars + j)*GH->BlocksSize];
         ReadSize = BH->Size + CRCSize;
@@ -1239,7 +1384,7 @@ void GenericIO::readData(int EffRank, bool PrintStats, bool CollStats) {
         std::copy(CRCSave, CRCSave + CRCSize, CRCLoc);
 
       if (LData.size()) {
-        CompressHeader *CH = (CompressHeader*) &LData[0];
+        CompressHeader<IsBigEndian> *CH = (CompressHeader<IsBigEndian>*) &LData[0];
 
 #ifdef _OPENMP
 #pragma omp master
@@ -1256,7 +1401,7 @@ void GenericIO::readData(int EffRank, bool PrintStats, bool CollStats) {
   }
 #endif
 
-        blosc_decompress(&LData[0] + sizeof(CompressHeader),
+        blosc_decompress(&LData[0] + sizeof(CompressHeader<IsBigEndian>),
                          Vars[i].Data, Vars[i].Size*RH->NElems);
 
         if (CH->OrigCRC != crc64_omp(Vars[i].Data, Vars[i].Size*RH->NElems)) {
@@ -1264,6 +1409,13 @@ void GenericIO::readData(int EffRank, bool PrintStats, bool CollStats) {
           break;
         }
       }
+
+      // Byte swap the data if necessary.
+      if (IsBigEndian != isBigEndian())
+        for (size_t j = 0; j < RH->NElems; ++j) {
+          char *Offset = ((char *) Vars[i].Data) + j*Vars[i].Size;
+          bswap(Offset, Vars[i].Size);
+        }
 
       break;
     }
@@ -1351,11 +1503,19 @@ void GenericIO::readData(int EffRank, bool PrintStats, bool CollStats) {
 }
 
 void GenericIO::getVariableInfo(vector<VariableInfo> &VI) {
+  if (FH.isBigEndian())
+    getVariableInfo<true>(VI);
+  else
+    getVariableInfo<false>(VI);
+}
+
+template <bool IsBigEndian>
+void GenericIO::getVariableInfo(vector<VariableInfo> &VI) {
   assert(FH.getHeaderCache().size() && "HeaderCache must not be empty");
 
-  GlobalHeader *GH = (GlobalHeader *) &FH.getHeaderCache()[0];
+  GlobalHeader<IsBigEndian> *GH = (GlobalHeader<IsBigEndian> *) &FH.getHeaderCache()[0];
   for (uint64_t j = 0; j < GH->NVars; ++j) {
-    VariableHeader *VH = (VariableHeader *) &FH.getHeaderCache()[GH->VarsStart +
+    VariableHeader<IsBigEndian> *VH = (VariableHeader<IsBigEndian> *) &FH.getHeaderCache()[GH->VarsStart +
                                                          j*GH->VarsSize];
 
     string VName(VH->Name, VH->Name + NameSize);

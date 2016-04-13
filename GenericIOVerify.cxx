@@ -105,7 +105,8 @@ int main(int argc, char *argv[]) {
 #else
       bool MustMatch = false;
 #endif
-      GIO.openAndReadHeader(MustMatch);
+      GIO.openAndReadHeader(MustMatch ? GenericIO::MismatchRedistribute :
+                                        GenericIO::MismatchDisallowed);
       if (Verbose) cout << "\theader: okay" << endl;
 
 

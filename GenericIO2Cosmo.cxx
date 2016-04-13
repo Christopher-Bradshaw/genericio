@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
     MPI_COMM_WORLD,
 #endif
     mpiioName, Method);
-  GIO.openAndReadHeader(false);
+  GIO.openAndReadHeader(GenericIO::MismatchAllowed);
 
   int NR = GIO.readNRanks();
   if (rank >= NR) {

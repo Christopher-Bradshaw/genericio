@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
 #else
     GenericIO GIO(FileName, Method);
 #endif
-    GIO.openAndReadHeader(false, -1, !ShowMap);
+    GIO.openAndReadHeader(GenericIO::MismatchAllowed, -1, !ShowMap);
 
     int NR = GIO.readNRanks();
 

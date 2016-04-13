@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
   GenericIO GIO(
     MPI_COMM_WORLD,
     mpiioName, Method);
-  GIO.openAndReadHeader();
+  GIO.openAndReadHeader(GenericIO::MismatchRedistribute);
 
   MPI_Barrier(MPI_COMM_WORLD);
 

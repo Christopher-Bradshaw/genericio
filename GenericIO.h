@@ -187,14 +187,16 @@ public:
 #ifndef GENERICIO_NO_MPI
   GenericIO(const MPI_Comm &C, const std::string &FN, unsigned FIOT = -1)
     : NElems(0), FileIOType(FIOT == (unsigned) -1 ? DefaultFileIOType : FIOT),
-      Partition(DefaultPartition), Comm(C), FileName(FN), SplitComm(MPI_COMM_NULL) {
+      Partition(DefaultPartition), Comm(C), FileName(FN), Redistributing(false),
+      DisableCollErrChecking(false), SplitComm(MPI_COMM_NULL) {
     std::fill(PhysOrigin, PhysOrigin + 3, 0.0);
     std::fill(PhysScale,  PhysScale + 3, 0.0);
   }
 #else
   GenericIO(const std::string &FN, unsigned FIOT = -1)
     : NElems(0), FileIOType(FIOT == (unsigned) -1 ? DefaultFileIOType : FIOT),
-      Partition(DefaultPartition), FileName(FN) {
+      Partition(DefaultPartition), FileName(FN), Redistributing(false),
+      DisableCollErrChecking(false) {
     std::fill(PhysOrigin, PhysOrigin + 3, 0.0);
     std::fill(PhysScale,  PhysScale + 3, 0.0);
   }
@@ -263,9 +265,15 @@ public:
   void write();
 #endif
 
+  enum MismatchBehavior {
+    MismatchAllowed,
+    MismatchDisallowed,
+    MismatchRedistribute
+  };
+
   // Reading
-  void openAndReadHeader(bool MustMatch = true, int EffRank = -1,
-                         bool CheckPartMap = true);
+  void openAndReadHeader(MismatchBehavior MB = MismatchDisallowed,
+                         int EffRank = -1, bool CheckPartMap = true);
 
   int readNRanks();
   void readDims(int Dims[3]);
@@ -279,7 +287,6 @@ public:
   void clearVariables() { this->Vars.clear(); };
 
   int getNumberOfVariables() { return this->Vars.size(); };
-
 
   void getVariableInfo(std::vector<VariableInfo> &VI);
 
@@ -329,9 +336,9 @@ private:
 #endif
 
   template <bool IsBigEndian>
-  void readHeaderLeader(void *GHPtr, bool MustMatch, int SplitNRanks,
-                        std::string &LocalFileName, uint64_t &HeaderSize,
-                        std::vector<char> &Header);
+  void readHeaderLeader(void *GHPtr, MismatchBehavior MB, int Rank, int NRanks,
+                        int SplitNRanks, std::string &LocalFileName,
+                        uint64_t &HeaderSize, std::vector<char> &Header);
 
   template <bool IsBigEndian>
   int readNRanks();
@@ -357,8 +364,12 @@ private:
   template <bool IsBigEndian>
   void readCoords(int Coords[3], int EffRank);
 
+  void readData(int EffRank, size_t RowOffset, int Rank,
+                uint64_t &TotalReadSize, int NErrs[3]);
+
   template <bool IsBigEndian>
-  void readData(int EffRank, bool PrintStats, bool CollStats);
+  void readData(int EffRank, size_t RowOffset,
+                int Rank, uint64_t &TotalReadSize, int NErrs[3]);
 
   template <bool IsBigEndian>
   void getVariableInfo(std::vector<VariableInfo> &VI);
@@ -383,6 +394,10 @@ protected:
 #ifndef GENERICIO_NO_MPI
   static std::size_t CollectiveMPIIOThreshold;
 #endif
+
+  // When redistributing, the rank blocks which this process should read.
+  bool Redistributing, DisableCollErrChecking;
+  std::vector<int> SourceRanks;
 
   std::vector<int> RankMap;
 #ifndef GENERICIO_NO_MPI

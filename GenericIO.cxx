@@ -50,6 +50,7 @@ extern "C" {
 #include <sstream>
 #include <fstream>
 #include <stdexcept>
+#include <iterator>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -65,9 +66,7 @@ extern "C" {
 #include <errno.h>
 
 #ifdef __bgq__
-#include <spi/include/kernel/location.h>
-#include <spi/include/kernel/process.h>
-#include <firmware/include/personality.h>
+#include <mpix.h>
 #endif
 
 #ifndef MPI_UINT64_T
@@ -205,7 +204,8 @@ void GenericFileIO_POSIX::read(void *buf, size_t count, off_t offset,
       if (errno == EINTR)
         continue;
 
-      throw runtime_error("Unable to read " + D + " from file: " + FileName);
+      throw runtime_error("Unable to read " + D + " from file: " + FileName +
+                          ": " + strerror(errno));
     }
 
     count -= scount;
@@ -223,7 +223,8 @@ void GenericFileIO_POSIX::write(const void *buf, size_t count, off_t offset,
       if (errno == EINTR)
         continue;
 
-      throw runtime_error("Unable to write " + D + " to file: " + FileName);
+      throw runtime_error("Unable to write " + D + " to file: " + FileName +
+                          ": " + strerror(errno));
     }
 
     count -= scount;
@@ -1152,6 +1153,24 @@ int GenericIO::readGlobalRankNumber(int EffRank) {
   return (int) RH->GlobalRank;
 }
 
+void GenericIO::getSourceRanks(vector<int> &SR) {
+  SR.clear();
+
+  if (Redistributing) {
+    std::copy(SourceRanks.begin(), SourceRanks.end(), std::back_inserter(SR));
+    return;
+  }
+
+  int Rank;
+#ifndef GENERICIO_NO_MPI
+  MPI_Comm_rank(Comm, &Rank);
+#else
+  Rank = 0;
+#endif
+
+  SR.push_back(Rank);
+}
+
 size_t GenericIO::readNumElems(int EffRank) {
   if (EffRank == -1 && Redistributing) {
     DisableCollErrChecking = true;
@@ -1504,6 +1523,12 @@ void GenericIO::readData(int EffRank, size_t RowOffset, int Rank,
         ofstream dofs(ssd.str().c_str(), ofstream::out);
         dofs.write((const char *) Data, ReadSize);
         dofs.close();
+
+        uint64_t RawCRC = crc64_omp(Data, ReadSize - CRCSize);
+        unsigned char *UData = (unsigned char *) Data;
+        crc64_invert(RawCRC, &UData[ReadSize - CRCSize]);
+        uint64_t NewCRC = crc64_omp(Data, ReadSize);
+        std::cerr << "Recalulated CRC: " << NewCRC << ((NewCRC == -1) ? "ok" : "bad") << "\n";
         break;
       }
 
@@ -1614,58 +1639,7 @@ void GenericIO::getVariableInfo(vector<VariableInfo> &VI) {
 
 void GenericIO::setNaturalDefaultPartition() {
 #ifdef __bgq__
-  Personality_t pers;
-  Kernel_GetPersonality(&pers, sizeof(pers));
-
-  // Nodes in an ION Partition
-  int SPLIT_A = 2;
-  int SPLIT_B = 2;
-  int SPLIT_C = 4;
-  int SPLIT_D = 4;
-  int SPLIT_E = 2;
-
-  int Anodes, Bnodes, Cnodes, Dnodes, Enodes;
-  int Acoord, Bcoord, Ccoord, Dcoord, Ecoord;
-  int A_color, B_color, C_color, D_color, E_color;
-  int A_blocks, B_blocks, C_blocks, D_blocks, E_blocks;
-  uint32_t id_on_node;
-  int ranks_per_node, color;
-
-  Anodes = pers.Network_Config.Anodes;
-  Acoord = pers.Network_Config.Acoord;
-
-  Bnodes = pers.Network_Config.Bnodes;
-  Bcoord = pers.Network_Config.Bcoord;
-
-  Cnodes = pers.Network_Config.Cnodes;
-  Ccoord = pers.Network_Config.Ccoord;
-
-  Dnodes = pers.Network_Config.Dnodes;
-  Dcoord = pers.Network_Config.Dcoord;
-
-  Enodes = pers.Network_Config.Enodes;
-  Ecoord = pers.Network_Config.Ecoord;
-
-  A_color  = Acoord /  SPLIT_A;
-  B_color  = Bcoord /  SPLIT_B;
-  C_color  = Ccoord /  SPLIT_C;
-  D_color  = Dcoord /  SPLIT_D;
-  E_color  = Ecoord /  SPLIT_E;
-
-  // Number of blocks
-  A_blocks = Anodes / SPLIT_A;
-  B_blocks = Bnodes / SPLIT_B;
-  C_blocks = Cnodes / SPLIT_C;
-  D_blocks = Dnodes / SPLIT_D;
-  E_blocks = Enodes / SPLIT_E;
-
-  color = (A_color * (B_blocks * C_blocks * D_blocks * E_blocks))
-    + (B_color * (C_blocks * D_blocks * E_blocks))
-    + (C_color * ( D_blocks * E_blocks))
-    + (D_color * ( E_blocks))
-    + E_color;
-
-  DefaultPartition = color;
+  DefaultPartition = MPIX_IO_link_id();
 #else
 #ifndef GENERICIO_NO_MPI
   bool UseName = true;

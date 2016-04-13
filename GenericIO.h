@@ -296,6 +296,8 @@ public:
 
   void readData(int EffRank = -1, bool PrintStats = true, bool CollStats = true);
 
+  void getSourceRanks(std::vector<int> &SR);
+
   void close() {
     FH.close();
   }

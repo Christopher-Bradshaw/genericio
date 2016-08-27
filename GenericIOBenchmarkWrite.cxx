@@ -63,16 +63,23 @@ int main(int argc, char *argv[]) {
   MPI_Comm_rank(MPI_COMM_WORLD, &commRank);
   MPI_Comm_size(MPI_COMM_WORLD, &commRanks);
 
+  int a = 1;
+  if (argc > 1 && string(argv[a]) == "-c") {
+    GenericIO::setDefaultShouldCompress(true);
+    --argc;
+    ++a;
+  }
+
   if(argc != 4) {
-    fprintf(stderr,"USAGE: %s <mpiioName> <NP> <seed>\n", argv[0]);
+    fprintf(stderr,"USAGE: %s [-c] <mpiioName> <NP> <seed>\n", argv[0]);
     exit(-1);
   }
 
   GenericIO::setNaturalDefaultPartition();
 
-  char *mpiioName = argv[1];
-  size_t Np = atoi(argv[2])/commRanks;
-  int seed = atoi(argv[3]);
+  char *mpiioName = argv[a++];
+  size_t Np = atoi(argv[a++])/commRanks;
+  int seed = atoi(argv[a++]);
 
   srand48(seed + commRank);
 

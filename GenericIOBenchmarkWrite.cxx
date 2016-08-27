@@ -43,6 +43,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cmath>
+#include <algorithm>
 #include <iostream>
 #include <string>
 #include <cassert>
@@ -55,6 +56,18 @@
 
 using namespace std;
 using namespace gio;
+
+template <typename T>
+struct Generator {
+    Generator(T start, T inc) : value(start), inc(inc) {}
+    T operator()() {
+      value += inc;
+      return value;
+    }
+
+    T value;
+    T inc;
+};
 
 int main(int argc, char *argv[]) {
   MPI_Init(&argc, &argv);
@@ -119,14 +132,14 @@ int main(int argc, char *argv[]) {
   id.resize(Np + GIO.requestedExtraSpace()/sizeof(ID_T));
   mask.resize(Np + GIO.requestedExtraSpace()/sizeof(MASK_T));
 
-  std::fill(xx.begin(), xx.end(), 25);
-  std::fill(yy.begin(), yy.end(), 25);
-  std::fill(zz.begin(), zz.end(), 25);
-  std::fill(vx.begin(), vx.end(), 25);
-  std::fill(vy.begin(), vy.end(), 25);
-  std::fill(vz.begin(), vz.end(), 25);
-  std::fill(phi.begin(), phi.end(), 25);
-  std::fill(id.begin(), id.end(), 25);
+  std::generate(xx.begin(), xx.end(), Generator<POSVEL_T>(25, 3));
+  std::generate(yy.begin(), yy.end(), Generator<POSVEL_T>(25, 3));
+  std::generate(zz.begin(), zz.end(), Generator<POSVEL_T>(25, 3));
+  std::generate(vx.begin(), vx.end(), Generator<POSVEL_T>(25, 3));
+  std::generate(vy.begin(), vy.end(), Generator<POSVEL_T>(25, 3));
+  std::generate(vz.begin(), vz.end(), Generator<POSVEL_T>(25, 3));
+  std::generate(phi.begin(), phi.end(), Generator<POSVEL_T>(25, 3));
+  std::generate(id.begin(), id.end(), Generator<ID_T>(25, 3));
   std::fill(mask.begin(), mask.end(), 25);
 
   GIO.addVariable("x", xx, CoordFlagsX | GenericIO::VarHasExtraSpace);

@@ -51,7 +51,7 @@ FE_CFLAGS := -g -fPIC -O3 -fopenmp
 FE_CPPFLAGS := -Ithirdparty/blosc -Ithirdparty/sqlite -DGENERICIO_NO_MPI
 
 MPIDIR = mpi
-MPI_CFLAGS := -g -O3
+MPI_CFLAGS := -g -O3 -fopenmp
 MPI_CPPFLAGS := -Ithirdparty/blosc 
 
 $(FEDIR):

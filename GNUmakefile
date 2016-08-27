@@ -46,24 +46,88 @@ MPICXX = mpicxx
 all: fe-progs mpi-progs
 sql: fe-sqlite
 
+BLOSC_CPPFLAGS := \
+	-Ithirdparty/blosc \
+	-DHAVE_LZ4 -DHAVE_SNAPPY -DHAVE_ZLIB -DHAVE_ZSTD \
+	-Ithirdparty/blosc/internal-complibs/zlib-1.2.8 \
+	-Ithirdparty/blosc/internal-complibs/lz4-1.7.2 \
+	-Ithirdparty/blosc/internal-complibs/snappy-1.1.1 \
+	-Ithirdparty/blosc/internal-complibs/zstd-0.7.4 \
+	-Ithirdparty/blosc/internal-complibs/zstd-0.7.4/legacy \
+	-Ithirdparty/blosc/internal-complibs/zstd-0.7.4/compress \
+	-Ithirdparty/blosc/internal-complibs/zstd-0.7.4/common \
+	-Ithirdparty/blosc/internal-complibs/zstd-0.7.4/dictBuilder \
+	-Ithirdparty/blosc/internal-complibs/zstd-0.7.4/decompress
+
+BASE_CPPFLAGS := $(BLOSC_CPPFLAGS) -D__STDC_CONSTANT_MACROS
+
 FEDIR = frontend
 FE_CFLAGS := -g -fPIC -O3 -fopenmp
-FE_CPPFLAGS := -Ithirdparty/blosc -Ithirdparty/sqlite -DGENERICIO_NO_MPI
+FE_CPPFLAGS := $(BASE_CPPFLAGS) -Ithirdparty/sqlite -DGENERICIO_NO_MPI
 
 MPIDIR = mpi
 MPI_CFLAGS := -g -O3 -fopenmp
-MPI_CPPFLAGS := -Ithirdparty/blosc 
+MPI_CPPFLAGS := $(BASE_CPPFLAGS)
 
 $(FEDIR):
 	mkdir -p $(FEDIR)
 
-$(FEDIR)/%.o: thirdparty/blosc/%.c | $(FEDIR)
+$(FEDIR)/%.o: %.c | $(FEDIR)
+	mkdir -p $(dir $@)
 	$(CC) $(FE_CFLAGS) $(FE_CPPFLAGS) -c -o $@ $<
 
 $(FEDIR)/%.o: %.cxx | $(FEDIR)
+	mkdir -p $(dir $@)
 	$(CXX) $(FE_CFLAGS) $(FE_CPPFLAGS) -c -o $@ $<
 
-FE_BLOSC_O := $(FEDIR)/blosc.o $(FEDIR)/blosclz.o $(FEDIR)/shuffle.o $(FEDIR)/bitshuffle-generic.o $(FEDIR)/shuffle-generic.o
+BLOSC_O := \
+	thirdparty/blosc/blosc.o \
+	thirdparty/blosc/blosclz.o \
+	thirdparty/blosc/shuffle.o \
+	thirdparty/blosc/bitshuffle-generic.o \
+	thirdparty/blosc/shuffle-generic.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/gzwrite.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/crc32.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/inffast.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/zutil.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/infback.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/deflate.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/inflate.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/gzread.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/gzlib.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/gzclose.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/uncompr.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/compress.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/inftrees.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/trees.o \
+	thirdparty/blosc/internal-complibs/zlib-1.2.8/adler32.o \
+	thirdparty/blosc/internal-complibs/lz4-1.7.2/lz4.o \
+	thirdparty/blosc/internal-complibs/lz4-1.7.2/lz4hc.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/legacy/zstd_v01.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/legacy/zstd_v02.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/legacy/zstd_v03.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/legacy/zstd_v06.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/legacy/zstd_v04.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/legacy/zstd_v05.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/compress/fse_compress.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/compress/zstd_compress.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/compress/huf_compress.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/compress/zbuff_compress.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/common/entropy_common.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/common/xxhash.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/common/zstd_common.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/common/fse_decompress.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/dictBuilder/zdict.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/dictBuilder/divsufsort.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/decompress/zstd_decompress.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/decompress/huf_decompress.o \
+	thirdparty/blosc/internal-complibs/zstd-0.7.4/decompress/zbuff_decompress.o \
+	thirdparty/blosc/internal-complibs/snappy-1.1.1/snappy-c.o \
+	thirdparty/blosc/internal-complibs/snappy-1.1.1/snappy.o \
+	thirdparty/blosc/internal-complibs/snappy-1.1.1/snappy-sinksource.o \
+	thirdparty/blosc/internal-complibs/snappy-1.1.1/snappy-stubs-internal.o
+
+FE_BLOSC_O := $(addprefix $(FEDIR)/,$(BLOSC_O))
 
 $(FEDIR)/GenericIOPrint: $(FEDIR)/GenericIOPrint.o $(FEDIR)/GenericIO.o $(FE_BLOSC_O)
 	$(CXX) $(FE_CFLAGS) -o $@ $^ 
@@ -94,13 +158,15 @@ $(FEDIR)/sqlite3: $(FEDIR)/sqbuild/sqlite3.o $(FEDIR)/sqbuild/shell.o
 $(MPIDIR):
 	mkdir -p $(MPIDIR)
 
-$(MPIDIR)/%.o: thirdparty/blosc/%.c | $(MPIDIR)
+$(MPIDIR)/%.o: %.c | $(MPIDIR)
+	mkdir -p $(dir $@)
 	$(MPICC) $(MPI_CFLAGS) $(MPI_CPPFLAGS) -c -o $@ $<
 
 $(MPIDIR)/%.o: %.cxx | $(MPIDIR)
+	mkdir -p $(dir $@)
 	$(MPICXX) $(MPI_CFLAGS) $(MPI_CPPFLAGS) -c -o $@ $<
 
-MPI_BLOSC_O := $(MPIDIR)/blosc.o $(MPIDIR)/blosclz.o $(MPIDIR)/shuffle.o $(MPIDIR)/bitshuffle-generic.o $(MPIDIR)/shuffle-generic.o
+MPI_BLOSC_O := $(addprefix $(MPIDIR)/,$(BLOSC_O))
 
 $(MPIDIR)/GenericIOPrint: $(MPIDIR)/GenericIOPrint.o $(MPIDIR)/GenericIO.o $(MPI_BLOSC_O)
 	$(MPICXX) $(MPI_CFLAGS) -o $@ $^ 

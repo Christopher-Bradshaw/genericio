@@ -79,8 +79,15 @@ int main(int argc, char *argv[]) {
       NewGIO.setPhysScale(PhysScale[d], d);
     }
 
-    for (size_t i = 0; i < VI.size(); ++i)
+    for (size_t i = 0; i < VI.size(); ++i) {
+      if (NR != NRanks) {
+        // When dropping topology information, also drop the related column tags.
+        VI[i].IsPhysCoordX = VI[i].IsPhysCoordY = VI[i].IsPhysCoordZ =
+          VI[i].MaybePhysGhost = false;
+      }
+
       NewGIO.addVariable(VI[i], &Vars[i][0], GenericIO::VarHasExtraSpace);
+    }
 
     NewGIO.write();
   }

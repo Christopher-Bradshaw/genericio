@@ -38,7 +38,13 @@ int main(int argc, char *argv[]) {
       Method = GenericIO::FileIOMPI;
 
     GenericIO GIO(MPI_COMM_WORLD, FileName, Method);
-    GIO.openAndReadHeader(GenericIO::MismatchDisallowed);
+    GIO.openAndReadHeader(GenericIO::MismatchRedistribute);
+
+    int NR = GIO.readNRanks();
+    if (!Rank && NR != NRanks) {
+      cout << "Redistributing data from " << NR << " ranks to " << NRanks <<
+              " ranks; dropping rank topology information!\n";
+    }
 
     vector<GenericIO::VariableInfo> VI;
     GIO.getVariableInfo(VI);
@@ -57,7 +63,15 @@ int main(int argc, char *argv[]) {
 
     GIO.readData(-1, false);
 
-    GenericIO NewGIO(MPI_COMM_WORLD, NewFileName);
+    MPI_Comm Comm = MPI_COMM_WORLD;
+    if (NR == NRanks) {
+      int Periods[3] = { 0, 0, 0 };
+      int Dims[3];
+      GIO.readDims(Dims);
+      MPI_Cart_create(Comm, 3, Dims, Periods, 0, &Comm);
+    }
+
+    GenericIO NewGIO(Comm, NewFileName);
     NewGIO.setNumElems(NElem);
 
     for (int d = 0; d < 3; ++d) {

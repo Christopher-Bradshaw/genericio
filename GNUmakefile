@@ -63,10 +63,12 @@ $(FEDIR)/%.o: thirdparty/blosc/%.c | $(FEDIR)
 $(FEDIR)/%.o: %.cxx | $(FEDIR)
 	$(CXX) $(FE_CFLAGS) $(FE_CPPFLAGS) -c -o $@ $<
 
-$(FEDIR)/GenericIOPrint: $(FEDIR)/GenericIOPrint.o $(FEDIR)/GenericIO.o  $(FEDIR)/blosc.o $(FEDIR)/blosclz.o $(FEDIR)/shuffle.o
+FE_BLOSC_O := $(FEDIR)/blosc.o $(FEDIR)/blosclz.o $(FEDIR)/shuffle.o $(FEDIR)/bitshuffle-generic.o $(FEDIR)/shuffle-generic.o
+
+$(FEDIR)/GenericIOPrint: $(FEDIR)/GenericIOPrint.o $(FEDIR)/GenericIO.o $(FE_BLOSC_O)
 	$(CXX) $(FE_CFLAGS) -o $@ $^ 
 
-$(FEDIR)/GenericIOVerify: $(FEDIR)/GenericIOVerify.o $(FEDIR)/GenericIO.o $(FEDIR)/blosc.o $(FEDIR)/blosclz.o $(FEDIR)/shuffle.o
+$(FEDIR)/GenericIOVerify: $(FEDIR)/GenericIOVerify.o $(FEDIR)/GenericIO.o $(FE_BLOSC_O)
 	$(CXX) $(FE_CFLAGS) -o $@ $^ 
 
 FE_UNAME := $(shell uname -s)
@@ -98,16 +100,18 @@ $(MPIDIR)/%.o: thirdparty/blosc/%.c | $(MPIDIR)
 $(MPIDIR)/%.o: %.cxx | $(MPIDIR)
 	$(MPICXX) $(MPI_CFLAGS) $(MPI_CPPFLAGS) -c -o $@ $<
 
-$(MPIDIR)/GenericIOPrint: $(MPIDIR)/GenericIOPrint.o $(MPIDIR)/GenericIO.o $(MPIDIR)/blosc.o $(MPIDIR)/blosclz.o $(MPIDIR)/shuffle.o
+MPI_BLOSC_O := $(MPIDIR)/blosc.o $(MPIDIR)/blosclz.o $(MPIDIR)/shuffle.o $(MPIDIR)/bitshuffle-generic.o $(MPIDIR)/shuffle-generic.o
+
+$(MPIDIR)/GenericIOPrint: $(MPIDIR)/GenericIOPrint.o $(MPIDIR)/GenericIO.o $(MPI_BLOSC_O)
 	$(MPICXX) $(MPI_CFLAGS) -o $@ $^ 
 
-$(MPIDIR)/GenericIOVerify: $(MPIDIR)/GenericIOVerify.o $(MPIDIR)/GenericIO.o $(MPIDIR)/blosc.o $(MPIDIR)/blosclz.o $(MPIDIR)/shuffle.o
+$(MPIDIR)/GenericIOVerify: $(MPIDIR)/GenericIOVerify.o $(MPIDIR)/GenericIO.o $(MPI_BLOSC_O)
 	$(MPICXX) $(MPI_CFLAGS) -o $@ $^ 
 
-$(MPIDIR)/GenericIOBenchmarkRead: $(MPIDIR)/GenericIOBenchmarkRead.o $(MPIDIR)/GenericIO.o $(MPIDIR)/blosc.o $(MPIDIR)/blosclz.o $(MPIDIR)/shuffle.o
+$(MPIDIR)/GenericIOBenchmarkRead: $(MPIDIR)/GenericIOBenchmarkRead.o $(MPIDIR)/GenericIO.o $(MPI_BLOSC_O)
 	$(MPICXX) $(MPI_CFLAGS) -o $@ $^ 
 
-$(MPIDIR)/GenericIOBenchmarkWrite: $(MPIDIR)/GenericIOBenchmarkWrite.o $(MPIDIR)/GenericIO.o $(MPIDIR)/blosc.o $(MPIDIR)/blosclz.o $(MPIDIR)/shuffle.o
+$(MPIDIR)/GenericIOBenchmarkWrite: $(MPIDIR)/GenericIOBenchmarkWrite.o $(MPIDIR)/GenericIO.o $(MPI_BLOSC_O)
 	$(MPICXX) $(MPI_CFLAGS) -o $@ $^ 
 
 frontend-progs: $(FEDIR)/GenericIOPrint $(FEDIR)/GenericIOVerify

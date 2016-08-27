@@ -20,14 +20,40 @@ All entries are little endian.
 :version:
     (``uint8``) Blosc format version.
 :versionlz:
-    (``uint8``) Blosclz format  version (internal Lempel-Ziv algorithm).
-:flags:
-    (``bitfield``) The flags of the buffer.
+    (``uint8``) Version of the internal compressor used.
+:flags and compressor enumeration:
+    (``bitfield``) The flags of the buffer
 
     :bit 0 (``0x01``):
-        Whether the shuffle filter has been applied or not.
+        Whether the byte-shuffle filter has been applied or not.
     :bit 1 (``0x02``):
         Whether the internal buffer is a pure memcpy or not.
+    :bit 2 (``0x04``):
+        Whether the bit-shuffle filter has been applied or not.
+    :bit 3 (``0x08``):
+        Reserved
+    :bit 4 (``0x16``):
+        Reserved
+    :bit 5 (``0x32``):
+        Part of the enumeration for compressors.
+    :bit 6 (``0x64``):
+        Part of the enumeration for compressors.
+    :bit 7 (``0x64``):
+        Part of the enumeration for compressors.
+
+    The last three bits form an enumeration that allows to use alternative
+    compressors.
+
+    :``0``:
+        ``blosclz``
+    :``1``:
+        ``lz4`` or ``lz4hc``
+    :``2``:
+        ``snappy``
+    :``3``:
+        ``zlib``
+    :``4``:
+        ``zstd``
 
 :typesize:
     (``uint8``) Number of bytes for the atomic type.
@@ -37,4 +63,3 @@ All entries are little endian.
     (``uint32``) Size of internal blocks.
 :ctbytes:
     (``uint32``) Compressed size of the buffer.
-

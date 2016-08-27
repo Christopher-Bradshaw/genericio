@@ -1,6 +1,6 @@
-Blosc - A blocking, shuffling and lossless compression library
+Bitshuffle - Filter for improving compression of typed binary data.
 
-Copyright (C) 2009-2016 Francesc Alted <francesc@blosc.org>
+Copyright (c) 2014 Kiyoshi Masui (kiyo@physics.ubc.ca)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

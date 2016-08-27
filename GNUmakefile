@@ -59,7 +59,7 @@ BLOSC_CPPFLAGS := \
 	-Ithirdparty/blosc/internal-complibs/zstd-0.7.4/dictBuilder \
 	-Ithirdparty/blosc/internal-complibs/zstd-0.7.4/decompress
 
-BASE_CPPFLAGS := $(BLOSC_CPPFLAGS) -D__STDC_CONSTANT_MACROS
+BASE_CPPFLAGS := $(BLOSC_CPPFLAGS) -I. -D__STDC_CONSTANT_MACROS
 
 FEDIR = frontend
 FE_CFLAGS := -g -fPIC -O3 -fopenmp
@@ -141,7 +141,14 @@ FE_SHARED := -bundle
 else
 FE_SHARED := -shared
 endif
-$(FEDIR)/GenericIOSQLite.so: $(FEDIR)/GenericIOSQLite.o $(FEDIR)/GenericIO.o
+
+$(FEDIR)/libpygio.so: $(FEDIR)/GenericIO.o $(FEDIR)/python/lib/gio.o $(FE_BLOSC_O)
+	$(CXX) $(FE_CFLAGS) $(FE_SHARED) -o $@ $^
+
+$(FEDIR)/gio.py: python/gio.py
+	cp -f $< $@
+
+$(FEDIR)/GenericIOSQLite.so: $(FEDIR)/GenericIOSQLite.o $(FEDIR)/GenericIO.o $(FE_BLOSC_O)
 	$(CXX) $(FE_CFLAGS) $(FE_SHARED) -o $@ $^
 
 SQLITE_CPPFLAGS := -DSQLITE_ENABLE_COLUMN_METADATA=1 -DSQLITE_DISABLE_DIRSYNC=1 -DSQLITE_ENABLE_FTS3=3 -DSQLITE_ENABLE_RTREE=1 -DSQLITE_ENABLE_UNLOCK_NOTIFY=1 -DSQLITE_ENABLE_LOAD_EXTENSION=1 -DHAVE_READLINE=1
@@ -183,7 +190,7 @@ $(MPIDIR)/GenericIOBenchmarkWrite: $(MPIDIR)/GenericIOBenchmarkWrite.o $(MPIDIR)
 $(MPIDIR)/GenericIORewrite: $(MPIDIR)/GenericIORewrite.o $(MPIDIR)/GenericIO.o $(MPI_BLOSC_O)
 	$(MPICXX) $(MPI_CFLAGS) -o $@ $^ 
 
-frontend-progs: $(FEDIR)/GenericIOPrint $(FEDIR)/GenericIOVerify
+frontend-progs: $(FEDIR)/GenericIOPrint $(FEDIR)/GenericIOVerify $(FEDIR)/libpygio.so $(FEDIR)/gio.py
 fe-progs: frontend-progs
 
 mpi-progs: $(MPIDIR)/GenericIOPrint $(MPIDIR)/GenericIOVerify $(MPIDIR)/GenericIOBenchmarkRead $(MPIDIR)/GenericIOBenchmarkWrite $(MPIDIR)/GenericIORewrite

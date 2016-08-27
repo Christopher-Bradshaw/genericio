@@ -145,9 +145,6 @@ endif
 $(FEDIR)/libpygio.so: $(FEDIR)/GenericIO.o $(FEDIR)/python/lib/gio.o $(FE_BLOSC_O)
 	$(CXX) $(FE_CFLAGS) $(FE_SHARED) -o $@ $^
 
-$(FEDIR)/gio.py: python/gio.py
-	cp -f $< $@
-
 $(FEDIR)/GenericIOSQLite.so: $(FEDIR)/GenericIOSQLite.o $(FEDIR)/GenericIO.o $(FE_BLOSC_O)
 	$(CXX) $(FE_CFLAGS) $(FE_SHARED) -o $@ $^
 
@@ -190,7 +187,7 @@ $(MPIDIR)/GenericIOBenchmarkWrite: $(MPIDIR)/GenericIOBenchmarkWrite.o $(MPIDIR)
 $(MPIDIR)/GenericIORewrite: $(MPIDIR)/GenericIORewrite.o $(MPIDIR)/GenericIO.o $(MPI_BLOSC_O)
 	$(MPICXX) $(MPI_CFLAGS) -o $@ $^ 
 
-frontend-progs: $(FEDIR)/GenericIOPrint $(FEDIR)/GenericIOVerify $(FEDIR)/libpygio.so $(FEDIR)/gio.py
+frontend-progs: $(FEDIR)/GenericIOPrint $(FEDIR)/GenericIOVerify $(FEDIR)/libpygio.so
 fe-progs: frontend-progs
 
 mpi-progs: $(MPIDIR)/GenericIOPrint $(MPIDIR)/GenericIOVerify $(MPIDIR)/GenericIOBenchmarkRead $(MPIDIR)/GenericIOBenchmarkWrite $(MPIDIR)/GenericIORewrite

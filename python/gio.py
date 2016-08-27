@@ -27,7 +27,7 @@
 # *****************************************************************************
 # 
 #                                  DISCLAIMER
-# THE SOFTWARE IS SUPPLIED “AS IS” WITHOUT WARRANTY OF ANY KIND.  NEITHER THE
+# THE SOFTWARE IS SUPPLIED "AS IS" WITHOUT WARRANTY OF ANY KIND.  NEITHER THE
 # UNTED STATES GOVERNMENT, NOR THE UNITED STATES DEPARTMENT OF ENERGY, NOR
 # UCHICAGO ARGONNE, LLC, NOR ANY OF THEIR EMPLOYEES, MAKES ANY WARRANTY,
 # EXPRESS OR IMPLIED, OR ASSUMES ANY LEGAL LIABILITY OR RESPONSIBILITY FOR THE
@@ -43,7 +43,7 @@ import os
 
 #Define where the library is and load it
 _path = os.path.dirname('__file__')
-libpygio = ct.CDLL(os.path.abspath('libpygio.so'))
+libpygio = ct.CDLL(os.path.abspath('../frontend/libpygio.so'))
 #we need to define the return type ("restype") and
 #the argument types
 libpygio.get_elem_num.restype=ct.c_int64

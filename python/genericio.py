@@ -42,8 +42,8 @@ import ctypes as ct
 import os
 
 #Define where the library is and load it
-_path = os.path.dirname('__file__')
-libpygio = ct.CDLL(os.path.abspath('../frontend/libpygio.so'))
+_path = os.path.dirname(__file__)
+libpygio = ct.CDLL(_path + '/../frontend/libpygio.so')
 #we need to define the return type ("restype") and
 #the argument types
 libpygio.get_elem_num.restype=ct.c_int64

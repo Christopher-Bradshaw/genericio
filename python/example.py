@@ -38,7 +38,7 @@
 # *****************************************************************************
 
 import sys
-import gio
+import genericio as gio
 
 name = sys.argv[1]
 gio.gio_inspect(name)

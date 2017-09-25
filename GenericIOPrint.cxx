@@ -275,6 +275,28 @@ int main(int argc, char *argv[]) {
     }
     cout << endl;
 
+    cout << "# ";
+    for (size_t i = 0; i < VI.size(); ++i) {
+      if (VI[i].Size == VI[i].ElementSize) {
+        cout << "(" << (VI[i].IsFloat ? "f" :
+                        (VI[i].IsSigned ? "s" : "u")) << 8*VI[i].Size << ")";
+      } else {
+        size_t NumElements = VI[i].Size/VI[i].ElementSize;
+        for (size_t j = 0; j < NumElements; ++j) {
+          cout << "(" << (VI[i].IsFloat ? "f" :
+                          (VI[i].IsSigned ? "s" : "u")) <<
+                  8*VI[i].ElementSize << ")";
+
+          if (j != NumElements - 1)
+            cout << "\t";
+        }
+      }
+
+      if (i != VI.size() - 1)
+        cout << "\t";
+    }
+    cout << endl;
+
     for (int i = 0; i < NR; ++i) {
       size_t NElem = GIO.readNumElems(i);
       int Coords[3];

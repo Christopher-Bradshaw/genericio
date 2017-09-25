@@ -69,6 +69,28 @@ struct Generator {
     T inc;
 };
 
+struct pos_t {
+  POSVEL_T x, y, z, w;
+};
+
+template <>
+struct Generator<pos_t> {
+  Generator(POSVEL_T start, POSVEL_T inc) :
+    GenX(start, inc), GenY(start, inc), GenZ(start, inc), GenW(start, inc) {}
+
+  pos_t operator()() {
+    pos_t v;
+    v.x = GenX();
+    v.y = GenY();
+    v.z = GenZ();
+    v.w = GenW();
+
+    return v;
+  }
+
+  Generator<POSVEL_T> GenX, GenY, GenZ, GenW;
+};
+
 int main(int argc, char *argv[]) {
   MPI_Init(&argc, &argv);
 
@@ -76,7 +98,14 @@ int main(int argc, char *argv[]) {
   MPI_Comm_rank(MPI_COMM_WORLD, &commRank);
   MPI_Comm_size(MPI_COMM_WORLD, &commRanks);
 
+  bool UseAOS = false;
   int a = 1;
+  if (argc > 1 && string(argv[a]) == "-a") {
+    UseAOS = true;
+    --argc;
+    ++a;
+  }
+
   if (argc > 1 && string(argv[a]) == "-c") {
     GenericIO::setDefaultShouldCompress(true);
     --argc;
@@ -84,7 +113,7 @@ int main(int argc, char *argv[]) {
   }
 
   if(argc != 4) {
-    fprintf(stderr,"USAGE: %s [-c] <mpiioName> <NP> <seed>\n", argv[0]);
+    fprintf(stderr,"USAGE: %s [-a] [-c] <mpiioName> <NP> <seed>\n", argv[0]);
     exit(-1);
   }
 
@@ -102,6 +131,8 @@ int main(int argc, char *argv[]) {
   vector<POSVEL_T> xx, yy, zz, vx, vy, vz, phi;
   vector<ID_T> id;
   vector<MASK_T> mask;
+
+  vector<pos_t> pos, vel;
 
   assert(sizeof(ID_T) == 8);
 
@@ -122,46 +153,67 @@ int main(int argc, char *argv[]) {
   GIO.setPhysOrigin(0.0);
   GIO.setPhysScale(256.0);
 
-  xx.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
-  yy.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
-  zz.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
-  vx.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
-  vy.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
-  vz.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
-  phi.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
+  if (UseAOS) {
+    pos.resize(Np + (GIO.requestedExtraSpace() + sizeof(pos_t) - 1)/sizeof(pos_t));
+    vel.resize(Np + (GIO.requestedExtraSpace() + sizeof(pos_t) - 1)/sizeof(pos_t));
+  } else {
+    xx.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
+    yy.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
+    zz.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
+    vx.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
+    vy.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
+    vz.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
+    phi.resize(Np + GIO.requestedExtraSpace()/sizeof(POSVEL_T));
+  }
   id.resize(Np + GIO.requestedExtraSpace()/sizeof(ID_T));
   mask.resize(Np + GIO.requestedExtraSpace()/sizeof(MASK_T));
 
-  std::generate(xx.begin(), xx.end(), Generator<POSVEL_T>(25, 3));
-  std::generate(yy.begin(), yy.end(), Generator<POSVEL_T>(25, 3));
-  std::generate(zz.begin(), zz.end(), Generator<POSVEL_T>(25, 3));
-  std::generate(vx.begin(), vx.end(), Generator<POSVEL_T>(25, 3));
-  std::generate(vy.begin(), vy.end(), Generator<POSVEL_T>(25, 3));
-  std::generate(vz.begin(), vz.end(), Generator<POSVEL_T>(25, 3));
-  std::generate(phi.begin(), phi.end(), Generator<POSVEL_T>(25, 3));
+  if (UseAOS) {
+    std::generate(pos.begin(), pos.end(), Generator<pos_t>(25, 3));
+    std::generate(vel.begin(), vel.end(), Generator<pos_t>(25, 3));
+  } else {
+    std::generate(xx.begin(), xx.end(), Generator<POSVEL_T>(25, 3));
+    std::generate(yy.begin(), yy.end(), Generator<POSVEL_T>(25, 3));
+    std::generate(zz.begin(), zz.end(), Generator<POSVEL_T>(25, 3));
+    std::generate(vx.begin(), vx.end(), Generator<POSVEL_T>(25, 3));
+    std::generate(vy.begin(), vy.end(), Generator<POSVEL_T>(25, 3));
+    std::generate(vz.begin(), vz.end(), Generator<POSVEL_T>(25, 3));
+    std::generate(phi.begin(), phi.end(), Generator<POSVEL_T>(25, 3));
+  }
   std::generate(id.begin(), id.end(), Generator<ID_T>(25, 3));
   std::fill(mask.begin(), mask.end(), 25);
 
-  GIO.addVariable("x", xx, CoordFlagsX | GenericIO::VarHasExtraSpace);
-  GIO.addVariable("y", yy, CoordFlagsY | GenericIO::VarHasExtraSpace);
-  GIO.addVariable("z", zz, CoordFlagsZ | GenericIO::VarHasExtraSpace);
-  GIO.addVariable("vx", vx, GenericIO::VarHasExtraSpace);
-  GIO.addVariable("vy", vy, GenericIO::VarHasExtraSpace);
-  GIO.addVariable("vz", vz, GenericIO::VarHasExtraSpace);
-  GIO.addVariable("phi", phi, GenericIO::VarHasExtraSpace);
+  if (UseAOS) {
+    GIO.addVariable("pos", pos, CoordFlagsX | CoordFlagsY | CoordFlagsZ |
+                                GenericIO::VarHasExtraSpace);
+    GIO.addVariable("vel", vel, GenericIO::VarHasExtraSpace);
+  } else {
+    GIO.addVariable("x", xx, CoordFlagsX | GenericIO::VarHasExtraSpace);
+    GIO.addVariable("y", yy, CoordFlagsY | GenericIO::VarHasExtraSpace);
+    GIO.addVariable("z", zz, CoordFlagsZ | GenericIO::VarHasExtraSpace);
+    GIO.addVariable("vx", vx, GenericIO::VarHasExtraSpace);
+    GIO.addVariable("vy", vy, GenericIO::VarHasExtraSpace);
+    GIO.addVariable("vz", vz, GenericIO::VarHasExtraSpace);
+    GIO.addVariable("phi", phi, GenericIO::VarHasExtraSpace);
+  }
   GIO.addVariable("id", id, GenericIO::VarHasExtraSpace);
   GIO.addVariable("mask", mask, GenericIO::VarHasExtraSpace);
 
   GIO.write();
   } // destroy GIO prior to calling MPI_Finalize
 
-  xx.resize(Np);
-  yy.resize(Np);
-  zz.resize(Np);
-  vx.resize(Np);
-  vy.resize(Np);
-  vz.resize(Np);
-  phi.resize(Np);
+  if (UseAOS) {
+    pos.resize(Np);
+    vel.resize(Np);
+  } else {
+    xx.resize(Np);
+    yy.resize(Np);
+    zz.resize(Np);
+    vx.resize(Np);
+    vy.resize(Np);
+    vz.resize(Np);
+    phi.resize(Np);
+  }
   id.resize(Np);
   mask.resize(Np);
 

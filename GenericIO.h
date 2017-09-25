@@ -117,6 +117,50 @@ protected:
   int FH;
 };
 
+namespace detail {
+// A standard enable_if idiom (we include our own here for pre-C++11 support).
+template <bool B, typename T = void>
+struct enable_if {};
+
+template <typename T>
+struct enable_if<true, T> { typedef T type; };
+
+// A SFINAE-based trait to detect whether a type has a member named x. This is
+// designed to work both with structs/classes and also with OpenCL-style vector
+// types.
+template <typename T>
+class has_x {
+  typedef char yes[1];
+  typedef char no[2];
+
+  template <typename C>
+  static yes &test(char(*)[sizeof((*((C *) 0)).x)]);
+
+  template <typename C>
+  static no &test(...);
+
+public:
+  enum { value = sizeof(test<T>(0)) == sizeof(yes) };
+};
+
+// A SFINAE-based trait to detect whether a type is array-like (i.e. supports
+// the [] operator).
+template <typename T>
+class is_array {
+  typedef char yes[1];
+  typedef char no[2];
+
+  template <typename C>
+  static yes &test(char(*)[sizeof((*((C *) 0))[0])]);
+
+  template <typename C>
+  static no &test(...);
+
+public:
+  enum { value = sizeof(test<T>(0)) == sizeof(yes) };
+};
+} // namespace detail
+
 class GenericIO {
 public:
   enum VariableFlags {
@@ -132,10 +176,10 @@ public:
 
   struct VariableInfo {
     VariableInfo(const std::string &N, std::size_t S, bool IF, bool IS,
-                 bool PCX, bool PCY, bool PCZ, bool PG)
+                 bool PCX, bool PCY, bool PCZ, bool PG, std::size_t ES = 0)
       : Name(N), Size(S), IsFloat(IF), IsSigned(IS),
         IsPhysCoordX(PCX), IsPhysCoordY(PCY), IsPhysCoordZ(PCZ),
-        MaybePhysGhost(PG) {}
+        MaybePhysGhost(PG), ElementSize(ES ? ES : S) {}
 
     std::string Name;
     std::size_t Size;
@@ -143,20 +187,70 @@ public:
     bool IsSigned;
     bool IsPhysCoordX, IsPhysCoordY, IsPhysCoordZ;
     bool MaybePhysGhost;
+    std::size_t ElementSize;
   };
 
 public:
-  struct Variable {
+  class Variable {
+  private:
+    template <typename ET>
+    void deduceTypeInfoFromElement(ET *) {
+      ElementSize = sizeof(ET);
+      IsFloat = !std::numeric_limits<ET>::is_integer;
+      IsSigned = std::numeric_limits<ET>::is_signed;
+    }
+
+    // There are specializations here to handle array types
+    // (e.g. typedef float float4[4];), struct types
+    // (e.g. struct float4 { float x, y, z, w; };), and scalar types.
+    // Builtin vector types
+    // (e.g. typedef float float4 __attribute__((ext_vector_type(4)));) should
+    // also work.
+    template <typename T>
+    typename detail::enable_if<detail::is_array<T>::value, void>::type
+    deduceTypeInfo(T *D) {
+      Size = sizeof(T);
+      deduceTypeInfoFromElement(&(*D)[0]);
+    }
+
+    template <typename T>
+    typename detail::enable_if<detail::has_x<T>::value &&
+                               !detail::is_array<T>::value, void>::type
+    deduceTypeInfo(T *D) {
+      Size = sizeof(T);
+      deduceTypeInfoFromElement(&(*D).x);
+    }
+
+    template <typename T>
+    typename detail::enable_if<!detail::has_x<T>::value &&
+                               !detail::is_array<T>::value, void>::type
+    deduceTypeInfo(T *D) {
+      Size = sizeof(T);
+      deduceTypeInfoFromElement(D);
+    }
+
+  public:
     template <typename T>
     Variable(const std::string &N, T* D, unsigned Flags = 0)
-      : Name(N), Size(sizeof(T)),
-        IsFloat(!std::numeric_limits<T>::is_integer),
-        IsSigned(std::numeric_limits<T>::is_signed),
-        Data((void *) D), HasExtraSpace(Flags & VarHasExtraSpace),
+      : Name(N), Data((void *) D), HasExtraSpace(Flags & VarHasExtraSpace),
         IsPhysCoordX(Flags & VarIsPhysCoordX),
         IsPhysCoordY(Flags & VarIsPhysCoordY),
         IsPhysCoordZ(Flags & VarIsPhysCoordZ),
-        MaybePhysGhost(Flags & VarMaybePhysGhost) {}
+        MaybePhysGhost(Flags & VarMaybePhysGhost) {
+      deduceTypeInfo(D);
+    }
+
+    template <typename T>
+    Variable(const std::string &N, std::size_t NumElements, T* D,
+             unsigned Flags = 0)
+      : Name(N), Data((void *) D), HasExtraSpace(Flags & VarHasExtraSpace),
+        IsPhysCoordX(Flags & VarIsPhysCoordX),
+        IsPhysCoordY(Flags & VarIsPhysCoordY),
+        IsPhysCoordZ(Flags & VarIsPhysCoordZ),
+        MaybePhysGhost(Flags & VarMaybePhysGhost) {
+      deduceTypeInfoFromElement(D);
+      Size = ElementSize*NumElements;
+    }
 
     Variable(const VariableInfo &VI, void *D, unsigned Flags = 0)
       : Name(VI.Name), Size(VI.Size), IsFloat(VI.IsFloat),
@@ -165,7 +259,8 @@ public:
         IsPhysCoordX((Flags & VarIsPhysCoordX) || VI.IsPhysCoordX),
         IsPhysCoordY((Flags & VarIsPhysCoordY) || VI.IsPhysCoordY),
         IsPhysCoordZ((Flags & VarIsPhysCoordZ) || VI.IsPhysCoordZ),
-        MaybePhysGhost((Flags & VarMaybePhysGhost) || VI.MaybePhysGhost) {}
+        MaybePhysGhost((Flags & VarMaybePhysGhost) || VI.MaybePhysGhost),
+        ElementSize(VI.ElementSize) {}
 
     std::string Name;
     std::size_t Size;
@@ -175,6 +270,7 @@ public:
     bool HasExtraSpace;
     bool IsPhysCoordX, IsPhysCoordY, IsPhysCoordZ;
     bool MaybePhysGhost;
+    std::size_t ElementSize;
   };
 
 public:
@@ -258,6 +354,19 @@ public:
   void addVariable(const VariableInfo &VI, void *Data,
                    unsigned Flags = 0) {
     Vars.push_back(Variable(VI, Data, Flags));
+  }
+
+  template <typename T>
+  void addScalarizedVariable(const std::string &Name, T *Data,
+                             std::size_t NumElements, unsigned Flags = 0) {
+    Vars.push_back(Variable(Name, NumElements, Data, Flags));
+  }
+
+  template <typename T, typename A>
+  void addScalarizedVariable(const std::string &Name, std::vector<T, A> &Data,
+                             std::size_t NumElements, unsigned Flags = 0) {
+    T *D = Data.empty() ? 0 : &Data[0];
+    addScalarizedVariable(Name, D, NumElements, Flags);
   }
 
 #ifndef GENERICIO_NO_MPI

@@ -321,6 +321,7 @@ struct VariableHeader {
   char Name[NameSize];
   endian_specific_value<uint64_t, IsBigEndian> Flags;
   endian_specific_value<uint64_t, IsBigEndian> Size;
+  endian_specific_value<uint64_t, IsBigEndian> ElementSize;
 };
 
 template <bool IsBigEndian>
@@ -582,6 +583,7 @@ nocomp:
       if (Vars[i].MaybePhysGhost) VFlags |= ValueMaybePhysGhost;
       VH->Flags = VFlags;
       RecordSize += VH->Size = Vars[i].Size;
+      VH->ElementSize = Vars[i].ElementSize;
     }
 
     MPI_Gather(&RHLocal, sizeof(RHLocal), MPI_BYTE,
@@ -1378,6 +1380,10 @@ void GenericIO::readData(int EffRank, size_t RowOffset, int Rank,
         continue;
       }
 
+      size_t ElementSize = VH->Size;
+      if (offsetof_safe(VH, ElementSize) < GH->VarsSize)
+        ElementSize = VH->ElementSize;
+
       VarFound = true;
       bool IsFloat = (bool) (VH->Flags & FloatValue),
            IsSigned = (bool) (VH->Flags & SignedValue);
@@ -1386,6 +1392,12 @@ void GenericIO::readData(int EffRank, size_t RowOffset, int Rank,
         ss << "Size mismatch for variable " << Vars[i].Name <<
               " in: " << OpenFileName << ": current: " << Vars[i].Size <<
               ", file: " << VH->Size;
+        throw runtime_error(ss.str());
+      } else if (ElementSize != Vars[i].ElementSize) {
+        stringstream ss;
+        ss << "Element size mismatch for variable " << Vars[i].Name <<
+              " in: " << OpenFileName << ": current: " << Vars[i].ElementSize <<
+              ", file: " << ElementSize;
         throw runtime_error(ss.str());
       } else if (IsFloat != Vars[i].IsFloat) {
         string Float("float"), Int("integer");
@@ -1564,9 +1576,10 @@ void GenericIO::readData(int EffRank, size_t RowOffset, int Rank,
 
       // Byte swap the data if necessary.
       if (IsBigEndian != isBigEndian())
-        for (size_t j = 0; j < RH->NElems; ++j) {
-          char *Offset = ((char *) VarData) + j*Vars[i].Size;
-          bswap(Offset, Vars[i].Size);
+        for (size_t j = 0;
+             j < RH->NElems*(Vars[i].Size/Vars[i].ElementSize); ++j) {
+          char *Offset = ((char *) VarData) + j*Vars[i].ElementSize;
+          bswap(Offset, Vars[i].ElementSize);
         }
 
       break;
@@ -1625,6 +1638,10 @@ void GenericIO::getVariableInfo(vector<VariableInfo> &VI) {
     if (VNameNull < NameSize)
       VName.resize(VNameNull);
 
+    size_t ElementSize = VH->Size;
+    if (offsetof_safe(VH, ElementSize) < GH->VarsSize)
+      ElementSize = VH->ElementSize;
+
     bool IsFloat = (bool) (VH->Flags & FloatValue),
          IsSigned = (bool) (VH->Flags & SignedValue),
          IsPhysCoordX = (bool) (VH->Flags & ValueIsPhysCoordX),
@@ -1633,7 +1650,7 @@ void GenericIO::getVariableInfo(vector<VariableInfo> &VI) {
          MaybePhysGhost = (bool) (VH->Flags & ValueMaybePhysGhost);
     VI.push_back(VariableInfo(VName, (size_t) VH->Size, IsFloat, IsSigned,
                               IsPhysCoordX, IsPhysCoordY, IsPhysCoordZ,
-                              MaybePhysGhost));
+                              MaybePhysGhost, ElementSize));
   }
 }
 

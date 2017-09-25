@@ -62,23 +62,30 @@ public:
 template <class T>
 class Printer : public PrinterBase {
 public:
-  Printer(GenericIO &G, size_t MNE, const string &N)
-    : Data(MNE + G.requestedExtraSpace()/sizeof(T)) {
-    G.addVariable(N, Data, true);
+  Printer(GenericIO &G, size_t MNE, size_t NE, const string &N)
+    : NumElements(NE), Data(MNE*NE + G.requestedExtraSpace()/sizeof(T)) {
+    G.addScalarizedVariable(N, Data, NE, GenericIO::VarHasExtraSpace);
   }
 
   virtual void print(ostream &os, size_t i) {
-    os << scientific << setprecision(numeric_limits<T>::digits10) << Data[i];
+    for (size_t j = 0; j < NumElements; ++j) {
+      os << scientific << setprecision(numeric_limits<T>::digits10) <<
+            Data[i*NumElements + j];
+
+      if (j != NumElements - 1)
+        os << "\t";
+    }
   }
 
 protected:
+  size_t NumElements;
   vector<T> Data;
 };
 
 template <typename T>
 PrinterBase *addPrinter(GenericIO::VariableInfo &V,
                 GenericIO &GIO, size_t MNE) {
-  if (sizeof(T) != V.Size)
+  if (sizeof(T) != V.ElementSize)
     return 0;
 
   if (V.IsFloat == numeric_limits<T>::is_integer)
@@ -86,7 +93,7 @@ PrinterBase *addPrinter(GenericIO::VariableInfo &V,
   if (V.IsSigned != numeric_limits<T>::is_signed)
     return 0;
 
-  return new Printer<T>(GIO, MNE, V.Name);
+  return new Printer<T>(GIO, MNE, V.Size/V.ElementSize, V.Name);
 }
 
 int main(int argc, char *argv[]) {
@@ -240,7 +247,29 @@ int main(int argc, char *argv[]) {
 
     cout << "# ";
     for (size_t i = 0; i < VI.size(); ++i) {
-      cout << VI[i].Name;
+      if (VI[i].Size == VI[i].ElementSize) {
+        cout << VI[i].Name;
+      } else {
+        size_t NumElements = VI[i].Size/VI[i].ElementSize;
+        for (size_t j = 0; j < NumElements; ++j) {
+          cout << VI[i].Name;
+          if (j == 0) {
+            cout << ".x";
+          } else if (j == 1) {
+            cout << ".y";
+          } else if (j == 2) {
+            cout << ".z";
+          } else if (j == 3) {
+            cout << ".w";
+          } else {
+            cout << ".w" << (j - 3);
+          }
+
+          if (j != NumElements - 1)
+            cout << "\t";
+        }
+      }
+
       if (i != VI.size() - 1)
         cout << "\t";
     }

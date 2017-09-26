@@ -42,17 +42,17 @@
 #include "gio.h"
 #include <iostream>
 
-  void read_gio_float(char* file_name, char* var_name, float* data){
-    read_gio<float>(file_name,var_name,data);
+  void read_gio_float(char* file_name, char* var_name, float* data, int field_count){
+    read_gio<float>(file_name,var_name,data,field_count);
   }
-  void read_gio_double(char* file_name, char* var_name, double* data){
-    read_gio<double>(file_name,var_name,data);
+  void read_gio_double(char* file_name, char* var_name, double* data, int field_count){
+    read_gio<double>(file_name,var_name,data,field_count);
   }
-  void read_gio_int32(char* file_name, char* var_name, int* data){
-    read_gio<int>(file_name,var_name,data);
+  void read_gio_int32(char* file_name, char* var_name, int* data, int field_count){
+    read_gio<int>(file_name,var_name,data,field_count);
   }
-  void read_gio_int64(char* file_name, char* var_name, int64_t* data){
-    read_gio<int64_t>(file_name,var_name,data);
+  void read_gio_int64(char* file_name, char* var_name, int64_t* data, int field_count){
+    read_gio<int64_t>(file_name,var_name,data,field_count);
   }
   
   int64_t get_elem_num(char* file_name){
@@ -76,13 +76,13 @@
     for(int i =0;i<num;++i){
       gio::GenericIO::VariableInfo vinfo = VI[i];
       if(vinfo.Name == var_name){
-	if(vinfo.IsFloat && vinfo.Size == 4)
+	if(vinfo.IsFloat && vinfo.ElementSize == 4)
 	  return float_type;
-	else if(vinfo.IsFloat && vinfo.Size == 8)
+	else if(vinfo.IsFloat && vinfo.ElementSize == 8)
 	  return double_type;
-	else if(!vinfo.IsFloat && vinfo.Size == 4)
+	else if(!vinfo.IsFloat && vinfo.ElementSize == 4)
 	  return int32_type;
-	else if(!vinfo.IsFloat && vinfo.Size == 8)
+	else if(!vinfo.IsFloat && vinfo.ElementSize == 8)
 	  return int64_type;
 	else
 	  return type_not_found;
@@ -90,6 +90,22 @@
     }
     return var_not_found;
       
+  }
+
+  int get_variable_field_count(char* file_name,char* var_name){
+   gio::GenericIO reader(file_name);
+   std::vector<gio::GenericIO::VariableInfo> VI;
+   reader.openAndReadHeader(gio::GenericIO::MismatchAllowed);
+   reader.getVariableInfo(VI);
+
+   int num =VI.size();
+    for(int i =0;i<num;++i){
+      gio::GenericIO::VariableInfo vinfo = VI[i];
+      if(vinfo.Name == var_name) {
+        return vinfo.Size/vinfo.ElementSize;
+      }
+    }
+    return 0;
   }
 
 extern "C" void inspect_gio(char* file_name){
@@ -109,7 +125,11 @@ extern "C" void inspect_gio(char* file_name){
       std::cout<<"[f";
     else
       std::cout<<"[i";
-    std::cout<<" "<<vinfo.Size*8<<"] ";
+    int NumElements = vinfo.Size/vinfo.ElementSize;
+    std::cout<<" "<<vinfo.ElementSize*8;
+    if (NumElements > 1)
+      std::cout<<"x"<<NumElements;
+    std::cout<<"] ";
     std::cout<<vinfo.Name<<std::endl;
   }
   std::cout<<"\n(i=integer,f=floating point, number bits size)"<<std::endl;

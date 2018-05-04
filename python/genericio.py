@@ -37,9 +37,10 @@
 # 
 # *****************************************************************************
 
+from __future__ import print_function
 import numpy as np
 import ctypes as ct
-import os
+import os,sys
 
 #Define where the library is and load it
 _path = os.path.dirname(__file__)
@@ -71,14 +72,17 @@ libpygio.inspect_gio.restype=None
 libpygio.inspect_gio.argtypes=[ct.c_char_p]
 
 def gio_read(file_name,var_name):
+    if sys.version_info[0] == 3:
+        file_name = bytes(file_name,'ascii')
+        var_name = bytes(var_name,'ascii')
     var_size = libpygio.get_elem_num(file_name)
     var_type = libpygio.get_variable_type(file_name,var_name)
     field_count = libpygio.get_variable_field_count(file_name,var_name)
     if(var_type==10):
-        print "Variable not found"
+        print("Variable not found")
         return
     elif(var_type==9):
-        print "variable type not known (not int32/int64/float/double)"
+        print("variable type not known (not int32/int64/float/double)")
     elif(var_type==0):
         #float
         result = np.ndarray((var_size,field_count),dtype=np.float32)
@@ -101,10 +105,15 @@ def gio_read(file_name,var_name):
         return result        
 
 def gio_has_variable(file_name,var_name):
+    if sys.version_info[0] == 3:
+        file_name=bytes(file_name,'ascii')
+        var_name=bytes(var_name,'ascii')
     var_size = libpygio.get_elem_num(file_name)
     var_type = libpygio.get_variable_type(file_name,var_name)
     return var_type!=10
 
 def gio_inspect(file_name):
+    if sys.version_info[0] == 3:
+        file_name=bytes(file_name,'ascii')
     libpygio.inspect_gio(file_name)
 

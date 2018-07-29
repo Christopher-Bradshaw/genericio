@@ -2,7 +2,6 @@ from distutils.core import setup, Extension
 from Cython.Build import cythonize
 
 setup(
-        # exts to build - hence "build_ext" in the compile arg
         ext_modules = cythonize([
             Extension(
                 "wrapper",
@@ -58,18 +57,8 @@ setup(
                     "./frontend/thirdparty/blosc/internal-complibs/snappy-1.1.1/snappy-sinksource.o",
                     "./frontend/thirdparty/blosc/internal-complibs/snappy-1.1.1/snappy-stubs-internal.o",
                 ],
-                # library_dirs = [
-                #         "/usr/lib64/openmpi/lib/",
-                # ],
-                # libraries=[
-                #         "mpi",
-                # ],
             ),
         ]),
-        include_dirs = [
-                # "/usr/include/openmpi-x86_64/",
-                # "./thirdparty/blosc",
-        ],
 )
 
 # python setup.py build_ext --inplace

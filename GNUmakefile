@@ -201,5 +201,7 @@ frontend-sqlite: $(FEDIR)/GenericIOSQLite.so $(FEDIR)/sqlite3
 fe-sqlite: frontend-sqlite
 
 clean:
-	rm -rf frontend mpi python/genericio.pyc
+	# rm -rf frontend mpi python/genericio.pyc
 
+clean2:
+	rm  wrapper.c wrapper.cpp wrapper.so wrapper.cpython*

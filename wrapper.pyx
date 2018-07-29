@@ -1,7 +1,7 @@
-# cdef extern from "GenericIO.h" namespace "gio":
-#     int x
+cdef extern from "GenericIO.h" namespace "gio":
+    int x
 
 
 
 def test():
-    return 1
+    return x

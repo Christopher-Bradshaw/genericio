@@ -9,6 +9,7 @@ setup(
                 sources=["wrapper.pyx"],
                 language="c++",
                 extra_link_args=["-fopenmp"],
+                extra_compile_args=["-DGENERICIO_NO_MPI"],
                 extra_objects=[
                     "./frontend/GenericIO.o",
                     "./frontend/thirdparty/blosc/blosc.o",

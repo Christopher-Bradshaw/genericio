@@ -161,6 +161,7 @@ public:
 };
 } // namespace detail
 
+const int x = 2;
 class GenericIO {
 public:
   enum VariableFlags {

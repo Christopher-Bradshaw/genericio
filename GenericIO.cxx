@@ -1698,4 +1698,4 @@ void GenericIO::setNaturalDefaultPartition() {
 #endif
 }
 
-} /* END namespace cosmotk */
+} /* END namespace gio */

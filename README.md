@@ -7,6 +7,7 @@ The readme is my attempt to understand the code. This is complicated by the fact
 ## Questions
 * What is the `MismatchBehavior` in the header reading funcs.
 * Why do we need the extra space on read? Why is it always just 8.
+* What does the `EffRank` variable mean.
 
 ## BigEndian
 

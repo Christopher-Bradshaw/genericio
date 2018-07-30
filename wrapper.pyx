@@ -4,7 +4,6 @@ cimport numpy as cnp
 cimport cython
 from cython.view cimport array as cvarray
 
-
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
@@ -44,7 +43,6 @@ cdef extern from "GenericIO.h" namespace "gio":
             bint IsPhysCoordX, IsPhysCoordY, IsPhysCoordZ
             bint MaybePhysGhost
             size_t ElementSize
-
 
         void openAndReadHeader(
                 MismatchBehavior MB,
@@ -152,6 +150,7 @@ cdef class GenericIO_:
     def readColumn(self, bytes colname):
         return self.readColumns([colname])[colname.decode("utf-8")]
 
+    # Private
     cdef _loadData(self, gio_numeric [:] rank_data, gio_numeric [:] results,
             bytes colname, int field_count, long num_ranks, elems_in_rank):
 
@@ -180,46 +179,3 @@ cdef class GenericIO_:
             return b"u4"
         elif not vi.IsSigned and vi.Size == 8:
             return b"u8"
-
-
-    ############ Probably shouldn't be part of the public interface
-
-    def openAndReadHeader(self, GenericIO.MismatchBehavior MB, int EffRank, bint CheckPartMap):
-        # pass
-        return self._thisptr.openAndReadHeader(MB, EffRank, CheckPartMap)
-
-    def getNumberOfVariables(self):
-        return self._thisptr.getNumberOfVariables()
-
-    def readTotalNumElems(self):
-        return self._thisptr.readTotalNumElems()
-
-    def readNumElems(self, rank):
-        return self._thisptr.readNumElems(rank)
-
-    def readNRanks(self):
-        return self._thisptr.readNRanks()
-
-
-    def readDims(self):
-        cdef int [:] dims = np.zeros(3, np.int32)
-        self._thisptr.readDims(&dims[0])
-        return np.array(dims)
-
-
-    # The process of reading is something like:
-    # 1) Add the variable you want to read
-    # 2) read it
-    # 3) get var info and in the .data field there is what you read
-    def addVariable(self, name):
-        cdef long [:] data = np.zeros(10, np.int64)
-        self._thisptr.addVariable(name, &data[0], 1)
-
-    def readData(self):
-        self._thisptr.readData(0, True, True)
-
-    def getVariableInfo(self):
-        cdef vector[GenericIO.VariableInfo] VI
-        self._thisptr.getVariableInfo(VI)
-        print(VI[0].Name)
-        print(VI.size())

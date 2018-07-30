@@ -21,7 +21,6 @@ ctypedef fused gio_numeric:
     cnp.float32_t
 
 cdef extern from "GenericIO.h" namespace "gio":
-    int x
     cdef cppclass GenericIO:
         GenericIO(void *c, string filename, unsigned int FIOT)
 
@@ -70,17 +69,18 @@ cdef extern from "GenericIO.h" namespace "gio":
         # Writing is only defined when compiled for MPI
         void write() # MPI
 
+
+
 cdef class GenericIO_:
     cdef GenericIO *_thisptr
 
-    def __cinit__(self, bytes filename, unsigned int FIOT, MPI.Comm world):
-        cdef mpi.MPI_Comm c_world = world.ob_mpi
 
+    def __cinit__(self, bytes filename, unsigned int FIOT, MPI.Comm world):
         cdef int rank = 0
-        ierr1 = mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &rank)
+        mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &rank)
         print("In cython, I'm rank {}".format(rank))
 
-        self._thisptr = new GenericIO(c_world, filename, FIOT) # MPI
+        self._thisptr = new GenericIO(world.ob_mpi, filename, FIOT) # MPI
 
     def write(self):
         self._thisptr.write()
@@ -105,6 +105,10 @@ cdef class GenericIO_:
         return cols
 
     def readColumns(self, colnames):
+        cdef int rank
+        mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &rank)
+        print("Reading as rank {}".format(rank))
+
         self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
 
         # Get info about the rows

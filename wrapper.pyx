@@ -1,23 +1,16 @@
 # distutils: language = c++
 import numpy as np
 cimport numpy as cnp
+cimport cython
 
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
-cdef extern from "GenericIO.h" namespace "gio::GenericIO":
-    cdef cppclass Variable:
-        Variable(string name, long *D, unsigned int flags)
-
-        string Name
-        size_t Size
-        bint IsFloat
-        bint IsSigned
-        void *Data
-        bint HasExtraSpace
-        bint IsPhysCoordX, IsPhysCoordY, IsPhysCoordZ
-        bint MaybePhysGhost
-        size_t ElementSize
+ctypedef fused gio_numeric:
+    cython.int
+    cython.long
+    cython.float
+    cython.double
 
 cdef extern from "GenericIO.h" namespace "gio":
     int x
@@ -63,17 +56,8 @@ cdef extern from "GenericIO.h" namespace "gio":
         void readData(int EffRank, bint PrintStats, bint)
 
         void addVariable(string varname, long *data, unsigned int flags)
-        # void addScalarizedVariable(
-        #         string varname, vector[long] *data, size_t numelems, unsigned int flags)
-        void addScalarizedVariable(
-                string varname, long *data, size_t numelems, unsigned int flags)
-
-cdef class Variable_:
-    cdef Variable *_thisptr
-    def __cinit__(self, bytes name):
-        cdef long some_ptr = 0
-        cdef int flags = 0
-        self._thisptr = new Variable(name, &some_ptr, flags)
+        void addScalarizedVariable[T](
+                string varname, T *data, size_t numelems, unsigned int flags)
 
 cdef class GenericIO_:
     cdef GenericIO *_thisptr

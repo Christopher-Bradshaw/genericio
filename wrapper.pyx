@@ -62,6 +62,7 @@ cdef extern from "GenericIO.h" namespace "gio":
         void addVariable(string varname, long *data, unsigned int flags)
         void addScalarizedVariable[T](
                 string varname, T *data, size_t numelems, unsigned int flags)
+        void clearVariables()
 
 cdef class GenericIO_:
     cdef GenericIO *_thisptr
@@ -85,34 +86,7 @@ cdef class GenericIO_:
             cols[i] = (vi[i].Name, vi[i].Size, vi[i].ElementSize, self._type_from_variable_info(vi[i]))
         return cols
 
-    cdef bytes _type_from_variable_info(self, GenericIO.VariableInfo vi):
-        if vi.IsFloat and vi.Size == 4:
-            return b"f4"
-        elif vi.IsFloat and vi.Size == 8:
-            return b"f8"
-        elif vi.IsSigned and vi.Size == 4:
-            return b"i4"
-        elif vi.IsSigned and vi.Size == 8:
-            return b"i8"
-        elif not vi.IsSigned and vi.Size == 4:
-            return b"u4"
-        elif not vi.IsSigned and vi.Size == 8:
-            return b"u8"
-
     def readColumns(self, colnames):
-
-        dtype = []
-        for colname in colnames:
-            coldata = self.readColumn(colname)
-            dtype.append((colname, coldata.dtype.str))
-            print(dir(coldata.dtype))
-
-        print(dtype)
-        x = np.zeros(10, dtype=dtype)
-        return x
-
-    def readColumn(self, bytes colname):
-        print(colname)
         self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
 
         # Get info about the rows
@@ -127,37 +101,49 @@ cdef class GenericIO_:
 
         # Info about the cols
         header_cols = self.readHeader()
-        col_index = np.where(header_cols["name"] == colname)[0]
-        try:
-            header = header_cols[col_index[0]]
-        except IndexError:
-            raise Exception("Colname not found in data")
+        col_index = np.where(np.isin(header_cols["name"], colnames))[0]
+        if len(col_index) != len(colnames):
+            raise Exception("One or more cols not found: got {}, found {}".format(
+                colnames, header_cols["name"][col_index]))
 
-        # TODO: Work out what this is for...
-        # It is used in the num elems call. I think this is the number of elements per row.
-        # e.g. a position three tuple would have size = 3 elemsize
-        cdef int field_count = header["size"] / header["elemsize"]
+        results = np.zeros(tot_rows, dtype=[
+            (
+                header_cols[idx]["name"].decode("utf-8"),
+                header_cols[idx]["type"].decode("utf-8"),
+            ) for idx in col_index])
 
-        if header["type"] == b"f4":
-            return np.array(self._loadData(<cnp.float32_t>1, "f4",
-                max_rows, tot_rows, colname, field_count, num_ranks, elems_in_rank))
-        elif header["type"] == b"f8":
-            return np.array(self._loadData(<cnp.float64_t>1, "f8",
-                max_rows, tot_rows, colname, field_count, num_ranks, elems_in_rank))
-        elif header["type"] == b"i4":
-            return np.array(self._loadData(<cnp.int32_t>1, "i4",
-                max_rows, tot_rows, colname, field_count, num_ranks, elems_in_rank))
-        elif header["type"] == b"i8":
-            return np.array(self._loadData(<cnp.int64_t>1, "i8",
-                max_rows, tot_rows, colname, field_count, num_ranks, elems_in_rank))
-        elif header["type"] == b"u4":
-            return np.array(self._loadData(<cnp.uint32_t>1, "u4",
-                max_rows, tot_rows, colname, field_count, num_ranks, elems_in_rank))
-        elif header["type"] == b"u8":
-            return np.array(self._loadData(<cnp.uint64_t>1, "u8",
-                max_rows, tot_rows, colname, field_count, num_ranks, elems_in_rank))
+        cdef int field_count
+        for idx in col_index:
+            field_count = header_cols[idx]["size"] / header_cols[idx]["elemsize"]
+            colname_str = header_cols[idx]["name"].decode("utf-8")
+            colname_byt = bytes(header_cols[idx]["name"])
+            print(colname_str)
 
-        raise Exception("Unknown type")
+            if header_cols[idx]["type"] == b"f4":
+                results[colname_str] = self._loadData(<cnp.float32_t>1, "f4",
+                    max_rows, tot_rows, colname_byt, field_count, num_ranks, elems_in_rank)
+            elif header_cols[idx]["type"] == b"f8":
+                results[colname_str] = self._loadData(<cnp.float64_t>1, "f8",
+                    max_rows, tot_rows, colname_byt, field_count, num_ranks, elems_in_rank)
+            elif header_cols[idx]["type"] == b"i4":
+                results[colname_str] = self._loadData(<cnp.int32_t>1, "i4",
+                    max_rows, tot_rows, colname_byt, field_count, num_ranks, elems_in_rank)
+            elif header_cols[idx]["type"] == b"i8":
+                print("here-1")
+                results[colname_str] = self._loadData(<cnp.int64_t>1, "i8",
+                    max_rows, tot_rows, colname_byt, field_count, num_ranks, elems_in_rank)
+            elif header_cols[idx]["type"] == b"u4":
+                results[colname_str] = self._loadData(<cnp.uint32_t>1, "u4",
+                    max_rows, tot_rows, colname_byt, field_count, num_ranks, elems_in_rank)
+            elif header_cols[idx]["type"] == b"u8":
+                results[colname_str] = self._loadData(<cnp.uint64_t>1, "u8",
+                    max_rows, tot_rows, colname_byt, field_count, num_ranks, elems_in_rank)
+            else:
+                raise Exception("Unknown type")
+        return results
+
+    def readColumn(self, bytes colname):
+        return self.readColumns([colname])[colname.decode("utf-8")]
 
     cdef _loadData(self, gio_numeric a, str python_type,
             long max_rows, long tot_rows, bytes colname,
@@ -165,6 +151,8 @@ cdef class GenericIO_:
 
         cdef gio_numeric [:] rank_data = np.zeros(max_rows, dtype=python_type)
         cdef gio_numeric [:] results = np.zeros(tot_rows, dtype=python_type)
+        # It seems like we can read more than one col at a time!
+        print(self._thisptr.clearVariables())
         self._thisptr.addScalarizedVariable(colname, &rank_data[0], field_count,
                 GenericIO.VariableFlags.VarHasExtraSpace)
 
@@ -175,6 +163,20 @@ cdef class GenericIO_:
             loc += elems_in_rank[rank]
 
         return results
+
+    cdef bytes _type_from_variable_info(self, GenericIO.VariableInfo vi):
+        if vi.IsFloat and vi.Size == 4:
+            return b"f4"
+        elif vi.IsFloat and vi.Size == 8:
+            return b"f8"
+        elif vi.IsSigned and vi.Size == 4:
+            return b"i4"
+        elif vi.IsSigned and vi.Size == 8:
+            return b"i8"
+        elif not vi.IsSigned and vi.Size == 4:
+            return b"u4"
+        elif not vi.IsSigned and vi.Size == 8:
+            return b"u8"
 
 
     ############ Probably shouldn't be part of the public interface

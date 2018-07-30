@@ -72,7 +72,6 @@ cdef class GenericIO_:
 
     def readHeader(self):
         self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
-        # Get info about the cols
         cdef vector[GenericIO.VariableInfo] vi
         self._thisptr.getVariableInfo(vi)
 
@@ -83,7 +82,11 @@ cdef class GenericIO_:
             ("type", bytes, 2),
         ])
         for i in range(vi.size()):
-            cols[i] = (vi[i].Name, vi[i].Size, vi[i].ElementSize, self._type_from_variable_info(vi[i]))
+            cols[i] = (
+                    vi[i].Name,
+                    vi[i].Size,
+                    vi[i].ElementSize,
+                    self._type_from_variable_info(vi[i]))
         return cols
 
     def readColumns(self, colnames):
@@ -117,27 +120,31 @@ cdef class GenericIO_:
             field_count = header_cols[idx]["size"] / header_cols[idx]["elemsize"]
             colname_str = header_cols[idx]["name"].decode("utf-8")
             colname_byt = bytes(header_cols[idx]["name"])
-            print(colname_str)
 
             if header_cols[idx]["type"] == b"f4":
-                results[colname_str] = self._loadData(<cnp.float32_t>1, "f4",
-                    max_rows, tot_rows, colname_byt, field_count, num_ranks, elems_in_rank)
+                self._loadData[cnp.float32_t](
+                        np.zeros(max_rows, "f4"), results[colname_str],
+                        colname_byt, field_count, num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == b"f8":
-                results[colname_str] = self._loadData(<cnp.float64_t>1, "f8",
-                    max_rows, tot_rows, colname_byt, field_count, num_ranks, elems_in_rank)
+                self._loadData[cnp.float64_t](
+                        np.zeros(max_rows, "f8"), results[colname_str],
+                        colname_byt, field_count, num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == b"i4":
-                results[colname_str] = self._loadData(<cnp.int32_t>1, "i4",
-                    max_rows, tot_rows, colname_byt, field_count, num_ranks, elems_in_rank)
+                self._loadData[cnp.int32_t](
+                        np.zeros(max_rows, "i4"), results[colname_str],
+                        colname_byt, field_count, num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == b"i8":
-                print("here-1")
-                results[colname_str] = self._loadData(<cnp.int64_t>1, "i8",
-                    max_rows, tot_rows, colname_byt, field_count, num_ranks, elems_in_rank)
+                self._loadData[cnp.int64_t](
+                        np.zeros(max_rows, "i8"), results[colname_str],
+                        colname_byt, field_count, num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == b"u4":
-                results[colname_str] = self._loadData(<cnp.uint32_t>1, "u4",
-                    max_rows, tot_rows, colname_byt, field_count, num_ranks, elems_in_rank)
+                self._loadData[cnp.uint32_t](
+                        np.zeros(max_rows, "u4"), results[colname_str],
+                        colname_byt, field_count, num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == b"u8":
-                results[colname_str] = self._loadData(<cnp.uint64_t>1, "u8",
-                    max_rows, tot_rows, colname_byt, field_count, num_ranks, elems_in_rank)
+                self._loadData[cnp.uint64_t](
+                        np.zeros(max_rows, "u8"), results[colname_str],
+                        colname_byt, field_count, num_ranks, elems_in_rank)
             else:
                 raise Exception("Unknown type")
         return results
@@ -145,14 +152,10 @@ cdef class GenericIO_:
     def readColumn(self, bytes colname):
         return self.readColumns([colname])[colname.decode("utf-8")]
 
-    cdef _loadData(self, gio_numeric a, str python_type,
-            long max_rows, long tot_rows, bytes colname,
-            int field_count, long num_ranks, elems_in_rank):
+    cdef _loadData(self, gio_numeric [:] rank_data, gio_numeric [:] results,
+            bytes colname, int field_count, long num_ranks, elems_in_rank):
 
-        cdef gio_numeric [:] rank_data = np.zeros(max_rows, dtype=python_type)
-        cdef gio_numeric [:] results = np.zeros(tot_rows, dtype=python_type)
-        # It seems like we can read more than one col at a time!
-        print(self._thisptr.clearVariables())
+        self._thisptr.clearVariables()
         self._thisptr.addScalarizedVariable(colname, &rank_data[0], field_count,
                 GenericIO.VariableFlags.VarHasExtraSpace)
 

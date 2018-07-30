@@ -72,21 +72,47 @@ cdef class GenericIO_:
     def readHeader(self):
         self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
         # Get info about the cols
-        cdef vector[GenericIO.VariableInfo] VI
-        self._thisptr.getVariableInfo(VI)
+        cdef vector[GenericIO.VariableInfo] vi
+        self._thisptr.getVariableInfo(vi)
 
-        cols = np.zeros(VI.size(), dtype=[
+        cols = np.zeros(vi.size(), dtype=[
             ("name", bytes, 100),
             ("size", np.int64),
             ("elemsize", np.int64),
-            ("is_float", np.bool),
-            ("is_signed", np.bool),
+            ("type", bytes, 2),
         ])
-        for i in range(VI.size()):
-            cols[i] = (VI[i].Name, VI[i].Size, VI[i].ElementSize, VI[i].IsFloat, VI[i].IsSigned)
+        for i in range(vi.size()):
+            cols[i] = (vi[i].Name, vi[i].Size, vi[i].ElementSize, self._type_from_variable_info(vi[i]))
         return cols
 
+    cdef bytes _type_from_variable_info(self, GenericIO.VariableInfo vi):
+        if vi.IsFloat and vi.Size == 4:
+            return b"f4"
+        elif vi.IsFloat and vi.Size == 8:
+            return b"f8"
+        elif vi.IsSigned and vi.Size == 4:
+            return b"i4"
+        elif vi.IsSigned and vi.Size == 8:
+            return b"i8"
+        elif not vi.IsSigned and vi.Size == 4:
+            return b"u4"
+        elif not vi.IsSigned and vi.Size == 8:
+            return b"u8"
+
+    def readColumns(self, colnames):
+
+        dtype = []
+        for colname in colnames:
+            coldata = self.readColumn(colname)
+            dtype.append((colname, coldata.dtype.str))
+            print(dir(coldata.dtype))
+
+        print(dtype)
+        x = np.zeros(10, dtype=dtype)
+        return x
+
     def readColumn(self, bytes colname):
+        print(colname)
         self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
 
         # Get info about the rows
@@ -112,22 +138,22 @@ cdef class GenericIO_:
         # e.g. a position three tuple would have size = 3 elemsize
         cdef int field_count = header["size"] / header["elemsize"]
 
-        if header["is_float"] and header["elemsize"] == 4:
+        if header["type"] == b"f4":
             return np.array(self._loadData(<cnp.float32_t>1, "f4",
                 max_rows, tot_rows, colname, field_count, num_ranks, elems_in_rank))
-        elif header["is_float"] and header["elemsize"] == 8:
+        elif header["type"] == b"f8":
             return np.array(self._loadData(<cnp.float64_t>1, "f8",
                 max_rows, tot_rows, colname, field_count, num_ranks, elems_in_rank))
-        elif header["is_signed"] and header["elemsize"] == 4:
+        elif header["type"] == b"i4":
             return np.array(self._loadData(<cnp.int32_t>1, "i4",
                 max_rows, tot_rows, colname, field_count, num_ranks, elems_in_rank))
-        elif header["is_signed"] and header["elemsize"] == 8:
+        elif header["type"] == b"i8":
             return np.array(self._loadData(<cnp.int64_t>1, "i8",
                 max_rows, tot_rows, colname, field_count, num_ranks, elems_in_rank))
-        elif not header["is_signed"] and header["elemsize"] == 4:
+        elif header["type"] == b"u4":
             return np.array(self._loadData(<cnp.uint32_t>1, "u4",
                 max_rows, tot_rows, colname, field_count, num_ranks, elems_in_rank))
-        elif not header["is_signed"] and header["elemsize"] == 8:
+        elif header["type"] == b"u8":
             return np.array(self._loadData(<cnp.uint64_t>1, "u8",
                 max_rows, tot_rows, colname, field_count, num_ranks, elems_in_rank))
 

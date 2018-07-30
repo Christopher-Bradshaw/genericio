@@ -1,8 +1,13 @@
 # distutils: language = c++
 import numpy as np
+
 cimport numpy as cnp
 cimport cython
-from cython.view cimport array as cvarray
+
+# Very useful: https://github.com/mpi4py/mpi4py/tree/master/demo/cython
+from mpi4py cimport MPI
+from mpi4py.MPI cimport Intracomm as IntracommType
+from mpi4py cimport libmpi as mpi
 
 from libcpp.string cimport string
 from libcpp.vector cimport vector
@@ -18,7 +23,7 @@ ctypedef fused gio_numeric:
 cdef extern from "GenericIO.h" namespace "gio":
     int x
     cdef cppclass GenericIO:
-        GenericIO(string filename, unsigned int FIOT)
+        GenericIO(void *c, string filename, unsigned int FIOT)
 
         # TODO: Work out why we need these string tags to be able to access these types
         # I currently have *no idea*...
@@ -62,11 +67,23 @@ cdef extern from "GenericIO.h" namespace "gio":
                 string varname, T *data, size_t numelems, unsigned int flags)
         void clearVariables()
 
+        # Writing is only defined when compiled for MPI
+        void write() # MPI
+
 cdef class GenericIO_:
     cdef GenericIO *_thisptr
 
-    def __cinit__(self, bytes filename, unsigned int FIOT):
-        self._thisptr = new GenericIO(filename, FIOT)
+    def __cinit__(self, bytes filename, unsigned int FIOT, MPI.Comm world):
+        cdef mpi.MPI_Comm c_world = world.ob_mpi
+
+        cdef int rank = 0
+        ierr1 = mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &rank)
+        print("In cython, I'm rank {}".format(rank))
+
+        self._thisptr = new GenericIO(c_world, filename, FIOT) # MPI
+
+    def write(self):
+        self._thisptr.write()
 
     def readHeader(self):
         self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
@@ -91,7 +108,7 @@ cdef class GenericIO_:
         self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
 
         # Get info about the rows
-        cdef long num_ranks = self.readNRanks()
+        cdef long num_ranks = self._thisptr.readNRanks()
         cdef long [:] elems_in_rank = np.zeros(num_ranks, np.int64)
         for rank in range(num_ranks):
             elems_in_rank[rank] = self._thisptr.readNumElems(rank)

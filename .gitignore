@@ -2,5 +2,6 @@ mpi
 frontend
 build
 .ycm_extra_conf.py
-wrapper.cpp
-wrapper.cpython*
+*wrapper.c*
+test_writes
+test*.py

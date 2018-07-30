@@ -4,11 +4,27 @@ Forked from https://trac.alcf.anl.gov/projects/genericio
 
 The readme is my attempt to understand the code. This is complicated by the fact that I don't know any C++ :)
 
-## Interface
+## Questions
+* What is the `MismatchBehavior` in the header reading funcs.
+* Why do we need the extra space on read? Why is it always just 8.
 
-Base class `GenericFileIO` with two subclasses `GenericFileIO_MPI` and `GenericFileIO_POSIX`. There is also a `GenericFileIO_MPICollective` which is based off `GenericFileIO_MPI`. I think these are simple readers/writers. But that are coordinated by the `GenericIO` class.
+## BigEndian
 
-What does the GenericIO class do...
+Lots of references to this in the code. I think it is to handle the case where data is written by a little endian machine and read by a big endian one (or vice versa). Naively, that wouldn't work as the little endian machine would write the integer 1 as `01 00 00 00` which the big endian machine would read as 2^24.
+
+To fix this, we byteswap the data if the endianness isn't the same in the data and on our machine (I think).
+
+## Blosc
+
+This uses [blosc](http://blosc.org/pages/blosc-in-depth/) which reads and writes compressed data. This not only results in smaller disk/ram usage but is also faster! The cost of decompressing is smaller than the cost of loading the larger data set. see [a paper](http://blosc.org/pages/blosc-in-depth/) for some more details.
+
+To understand Gio, all you need to know is that blosc is lowest layer in reading/writing and it does it fast.
+
+## GenericFileIO
+
+This isn't that important but I didn't know that when I first looked at this...
+
+Base class `GenericFileIO` with two subclasses `GenericFileIO_MPI` and `GenericFileIO_POSIX`. There is also a `GenericFileIO_MPICollective` which is based off `GenericFileIO_MPI`. These are simple readers/writers. But that are coordinated by the `GenericIO` class.
 
 #### GenericFileIO_POSIX
 

@@ -200,6 +200,11 @@ mpi-progs: $(MPIDIR)/GenericIOPrint $(MPIDIR)/GenericIOVerify $(MPIDIR)/GenericI
 frontend-sqlite: $(FEDIR)/GenericIOSQLite.so $(FEDIR)/sqlite3
 fe-sqlite: frontend-sqlite
 
+fe-blosc: $(FE_BLOSC_O)
+	ld -r $^ -o ./frontend/thirdparty/blosc/combined_blosc.o
+mpi-blosc: $(MPI_BLOSC_O)
+	ld -r $^ -o ./mpi/thirdparty/blosc/combined_blosc.o
+
 clean:
 	# rm -rf frontend mpi python/genericio.pyc
 

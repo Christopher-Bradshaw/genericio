@@ -5,15 +5,39 @@ cimport numpy as cnp
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
+cdef extern from "GenericIO.h" namespace "gio::GenericIO":
+    cdef cppclass Variable:
+        Variable(string name, long *D, unsigned int flags)
+
+        string Name
+        size_t Size
+        bint IsFloat
+        bint IsSigned
+        void *Data
+        bint HasExtraSpace
+        bint IsPhysCoordX, IsPhysCoordY, IsPhysCoordZ
+        bint MaybePhysGhost
+        size_t ElementSize
+
 cdef extern from "GenericIO.h" namespace "gio":
     int x
     cdef cppclass GenericIO:
         GenericIO(string filename, unsigned int FIOT)
 
+        # TODO: Work out why we need these string tags to be able to access these types
+        # I currently have *no idea*...
+        # See https://github.com/cython/cython/issues/1603
         enum MismatchBehavior:
-            MismatchAllowed
-            MismatchDisallowed
-            MismatchRedistribute
+            MismatchAllowed "gio::GenericIO::MismatchBehavior::MismatchAllowed",
+            MismatchDisallowed "gio::GenericIO::MismatchBehavior::MismatchDisallowed",
+            MismatchRedistribute "gio::GenericIO::MismatchBehavior::MismatchRedistribute",
+
+        enum VariableFlags:
+            VarHasExtraSpace "gio::GenericIO::VariableFlags::VarHasExtraSpace" = (1 << 0),
+            VarIsPhysCoordX "gio::GenericIO::VariableFlags::VarIsPhysCoordX" = (1 << 1),
+            VarIsPhysCoordY "gio::GenericIO::VariableFlags::VarIsPhysCoordY" = (1 << 2),
+            VarIsPhysCoordZ "gio::GenericIO::VariableFlags::VarIsPhysCoordZ" = (1 << 3),
+            VarMaybePhysGhost "gio::GenericIO::VariableFlags::VarMaybePhysGhost" = (1 << 4),
 
         struct VariableInfo:
             string Name
@@ -39,13 +63,78 @@ cdef extern from "GenericIO.h" namespace "gio":
         void readData(int EffRank, bint PrintStats, bint)
 
         void addVariable(string varname, long *data, unsigned int flags)
+        # void addScalarizedVariable(
+        #         string varname, vector[long] *data, size_t numelems, unsigned int flags)
+        void addScalarizedVariable(
+                string varname, long *data, size_t numelems, unsigned int flags)
 
+cdef class Variable_:
+    cdef Variable *_thisptr
+    def __cinit__(self, bytes name):
+        cdef long some_ptr = 0
+        cdef int flags = 0
+        self._thisptr = new Variable(name, &some_ptr, flags)
 
 cdef class GenericIO_:
     cdef GenericIO *_thisptr
 
     def __cinit__(self, bytes filename, unsigned int FIOT):
         self._thisptr = new GenericIO(filename, FIOT)
+
+    def readHeader(self):
+        self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
+        # Get info about the cols
+        cdef vector[GenericIO.VariableInfo] VI
+        self._thisptr.getVariableInfo(VI)
+
+        cols = np.zeros(VI.size(), dtype=[
+            ("name", bytes, 100), ("size", np.int64), ("elemsize", np.int64)
+        ])
+        for i in range(VI.size()):
+            cols[i] = (VI[i].Name, VI[i].Size, VI[i].ElementSize)
+        return cols
+
+    def readColumn(self, bytes colname):
+        self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
+
+        # Get info about the rows
+        cdef long num_ranks = self.readNRanks()
+        cdef long [:] elems_in_rank = np.zeros(num_ranks, np.int64)
+        for rank in range(num_ranks):
+            elems_in_rank[rank] = self._thisptr.readNumElems(rank)
+
+        cdef long tot_rows = sum(elems_in_rank)
+        cdef long extra_space = 5 # TODO why???
+        cdef long max_rows = max(elems_in_rank) + extra_space
+
+        # Info about the cols
+        header_cols = self.readHeader()
+        col_index = np.where(header_cols["name"] == colname)[0]
+        try:
+            col_index = col_index[0]
+        except IndexError:
+            raise Exception("Colname not found in data")
+
+        # TODO: Work out what this is for...
+        # It is used in the num elems call. I think this is the number of elements per row.
+        # e.g. a position three tuple would have size = 3 elemsize
+        field_count = header_cols[col_index]["size"] / header_cols[col_index]["elemsize"]
+
+        cdef long [:] rank_data = np.zeros(max_rows, np.int64)
+        self._thisptr.addScalarizedVariable(colname, &rank_data[0], field_count,
+                GenericIO.VariableFlags.VarHasExtraSpace)
+
+        cdef long [:] results = np.zeros(tot_rows, np.int64)
+        cdef long loc = 0
+        for rank in range(num_ranks):
+            self._thisptr.readData(rank, False, False)
+            results[loc:loc + elems_in_rank[rank]] = rank_data[:elems_in_rank[rank]]
+            loc += elems_in_rank[rank]
+
+        return np.array(results)
+
+
+    ############ Probably shouldn't be part of the public interface
 
     def openAndReadHeader(self, GenericIO.MismatchBehavior MB, int EffRank, bint CheckPartMap):
         # pass
@@ -86,8 +175,3 @@ cdef class GenericIO_:
         self._thisptr.getVariableInfo(VI)
         print(VI[0].Name)
         print(VI.size())
-
-
-
-def test():
-    return x

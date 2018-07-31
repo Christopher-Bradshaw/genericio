@@ -1,4 +1,5 @@
 # distutils: language = c++
+# cython: profile=True
 # Not sure if this is even worth it... But I don't like seeing yellow!
 # Undo cython: cdivision=True, boundscheck=False
 import numpy as np
@@ -100,31 +101,33 @@ cdef class GenericIO_:
     def write(self, cnp.ndarray toWrite):
         cdef int i
         cdef str colname
-        cdef bytes colname_byt
         cdef type typ
+
+        cdef list tmp = []
 
         for i in range(len(toWrite.dtype)):
             colname = toWrite.dtype.names[i]
-            colname_byt = bytes(colname, "ascii")
             contig = np.ascontiguousarray(toWrite[colname])
             typ = toWrite.dtype[i].type
 
             if typ is np.int32:
-                self._addVariable[cnp.int32_t](contig, colname_byt)
+                self._addVariable[cnp.int32_t](contig, colname)
             elif typ is np.int64:
-                self._addVariable[cnp.int64_t](contig, colname_byt)
+                self._addVariable[cnp.int64_t](contig, colname)
             elif typ is np.uint32:
-                self._addVariable[cnp.uint32_t](contig, colname_byt)
+                self._addVariable[cnp.uint32_t](contig, colname)
             elif typ is np.uint64:
-                self._addVariable[cnp.uint64_t](contig, colname_byt)
+                self._addVariable[cnp.uint64_t](contig, colname)
             elif typ is np.float32:
-                self._addVariable[cnp.float32_t](contig, colname_byt)
+                self._addVariable[cnp.float32_t](contig, colname)
             elif typ is np.float64:
-                self._addVariable[cnp.float64_t](contig, colname_byt)
+                self._addVariable[cnp.float64_t](contig, colname)
             else:
                 raise Exception("Type not allowed")
-            self._thisptr.setNumElems(len(toWrite))
+            # we need to prevent the mem for contig from being freed/reused before write
+            tmp.append(contig)
 
+        self._thisptr.setNumElems(len(toWrite))
         self._thisptr.write()
 
     def readHeader(self):
@@ -176,7 +179,7 @@ cdef class GenericIO_:
             elems_in_rank[rank] = self._thisptr.readNumElems(my_start_rank + rank)
 
         cdef long tot_rows = sum(elems_in_rank)
-        cdef long extra_space = 5 # TODO why???
+        cdef long extra_space = 1 # TODO why???
         cdef long max_rows = max(elems_in_rank) + extra_space
 
         cdef long idx
@@ -226,10 +229,15 @@ cdef class GenericIO_:
         return self.readColumns([colname])[colname]
 
     # Private
-    cdef _addVariable(self, gio_numeric [:] data, bytes colname):
-        self._thisptr.addScalarizedVariable(colname, &data[0], 1,
-                (GenericIO.VariableFlags.VarHasExtraSpace & # No clue what this does
-                GenericIO.VariableFlags.VarIsPhysCoordX)) # or this...
+    cdef _addVariable(self, gio_numeric [:] data, str colname):
+        self._thisptr.addScalarizedVariable(
+                bytes(colname, "ascii"),
+                &data[0],
+                1,
+                0,
+        )
+                # (GenericIO.VariableFlags.VarHasExtraSpace & # No clue what this does
+                # GenericIO.VariableFlags.VarIsPhysCoordX)) # or this...
 
     cdef _loadData(self, gio_numeric [:] rank_data, gio_numeric [:] results,
             str colname, int field_count,

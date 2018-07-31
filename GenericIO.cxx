@@ -77,21 +77,6 @@ using namespace std;
 
 namespace gio {
 
-void _spin_for_gdb();
-void _spin_for_gdb() {
-    volatile int i = 0;
-    char hostname[256];
-    gethostname(hostname, sizeof(hostname));
-    printf("PID %d on %s ready for attach\n", getpid(), hostname);
-    fflush(stdout);
-    while (0 == i)
-        sleep(5);
-    // Connect with gdb /path/to/prog pid
-    // Put a breakpoint after this func somewhere
-    // Go up a couple of frames and `set var i = 1`
-    // Continue
-}
-
 
 
 
@@ -416,6 +401,8 @@ void GenericIO::write() { // Second entry to write_cbx
   MPI_Comm_rank(SplitComm, &SplitRank);
   MPI_Comm_size(SplitComm, &SplitNRanks);
   /* if (Rank == 0) printf("Ranks %d, SplitRanks %d\n", NRanks, SplitNRanks); */
+
+  /* _spin_for_gdb(); // Need to do it after the split */
 
   string LocalFileName;
   // If we have split - I guess sometimes all things are in the same partition
@@ -747,6 +734,9 @@ nocomp:
 
     uint64_t WriteSize = NeedsBlockHeaders ?
                          LocalBlockHeaders[i].Size : NElems*Vars[i].Size;
+    // In Vars[i].Data the first 4 are corrupt. And because NeedsBlockHeaders is false, we haven't touched it
+    // at all in this func. It must have been corrupted in the add variable stage.
+    // But it wasn't...
     void *Data = NeedsBlockHeaders ? LocalData[i] : Vars[i].Data;
     uint64_t CRC = crc64_omp(Data, WriteSize);
     bool HasExtraSpace = NeedsBlockHeaders ?

@@ -57,6 +57,21 @@
 
 #include <unistd.h>
 
+/* void _spin_for_gdb() { */
+/*     volatile int i = 0; */
+/*     char hostname[256]; */
+/*     gethostname(hostname, sizeof(hostname)); */
+/*     printf("PID %d on %s ready for attach\n", getpid(), hostname); */
+/*     fflush(stdout); */
+/*     while (0 == i) */
+/*         sleep(5); */
+/*     // Connect with gdb /path/to/prog pid */
+/*     // Put a breakpoint after this func somewhere */
+/*     // Go up a couple of frames and `set var i = 1` */
+/*     // Continue */
+/* } */
+
+
 namespace gio {
 
 class GenericFileIO {
@@ -364,7 +379,9 @@ public:
   template <typename T>
   void addScalarizedVariable(const std::string &Name, T *Data,
                              std::size_t NumElements, unsigned Flags = 0) {
+
     Vars.push_back(Variable(Name, NumElements, Data, Flags));
+    // Not borked here
   }
 
   template <typename T, typename A>

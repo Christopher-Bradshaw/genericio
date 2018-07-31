@@ -210,3 +210,5 @@ clean:
 
 clean2:
 	rm  wrapper.c wrapper.cpp wrapper.so wrapper.cpython*
+pybuild_tmp: mpi/GenericIO.o wrapper.pyx
+	python3 setup.py build_ext --inplace --force

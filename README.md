@@ -6,8 +6,13 @@ The readme is my attempt to understand the code. This is complicated by the fact
 
 ## Questions
 * What is the `MismatchBehavior` in the header reading funcs.
-* Why do we need the extra space on read? Why is it always just 8.
 * What does the `EffRank` variable mean.
+* What are the variable flags for either the extra space or the IsPhysCoordX
+    * Why do we need the extra space on read? Why is it always just 8.
+* Can you append a column?
+
+## Partition
+
 
 ## BigEndian
 

@@ -64,11 +64,12 @@ cdef extern from "GenericIO.h" namespace "gio":
 
         void addVariable(string varname, long *data, unsigned int flags)
         void addScalarizedVariable[T](
-                string varname, T *data, size_t numelems, unsigned int flags)
+                string varname, T *data, size_t num_elems, unsigned int flags)
         void clearVariables()
 
         # Writing is only defined when compiled for MPI
         void write() # MPI
+        void setNumElems(size_t num_elems)
 
 
 
@@ -77,13 +78,26 @@ cdef class GenericIO_:
 
 
     def __cinit__(self, bytes filename, unsigned int FIOT, MPI.Comm world):
-        cdef int world_rank = 0
+        cdef int world_rank
         mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &world_rank)
-        print("In cython, I'm rank {}".format(world_rank))
 
         self._thisptr = new GenericIO(world.ob_mpi, filename, FIOT) # MPI
 
+
     def write(self):
+        cdef int world_rank
+        mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &world_rank)
+
+        cdef cnp.int64_t[:] x_data = np.arange(world_rank+1, dtype=np.int64)
+        self._thisptr.addScalarizedVariable(b"z", &x_data[0], 1,
+                (GenericIO.VariableFlags.VarHasExtraSpace & # No clue what this does
+                GenericIO.VariableFlags.VarIsPhysCoordX)) # or this...
+        # cdef cnp.int64_t[:] y_data = np.zeros(world_rank+1, dtype=np.int64)
+        # self._thisptr.addScalarizedVariable(b"y", &y_data[0], 1, 0)
+                # GenericIO.VariableFlags.VarHasExtraSpace)
+        self._thisptr.setNumElems(world_rank+1)
+
+
         self._thisptr.write()
 
     def readHeader(self):

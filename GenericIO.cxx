@@ -415,7 +415,7 @@ void GenericIO::write() { // Second entry to write_cbx
   int SplitNRanks, SplitRank;
   MPI_Comm_rank(SplitComm, &SplitRank);
   MPI_Comm_size(SplitComm, &SplitNRanks);
-  if (Rank == 0) printf("Ranks %d, SplitRanks %d\n", NRanks, SplitNRanks);
+  /* if (Rank == 0) printf("Ranks %d, SplitRanks %d\n", NRanks, SplitNRanks); */
 
   string LocalFileName;
   // If we have split - I guess sometimes all things are in the same partition
@@ -488,7 +488,7 @@ void GenericIO::write() { // Second entry to write_cbx
   int TopoStatus;
   MPI_Topo_test(Comm, &TopoStatus);
   if (TopoStatus == MPI_CART) {
-      if (Rank == 0) printf("Yes, topo is cart\n");
+      /* if (Rank == 0) printf("Yes, topo is cart\n"); */
     MPI_Cart_get(Comm, 3, Dims, Periods, Coords);
   } else {
     Dims[0] = NRanks;
@@ -507,7 +507,7 @@ void GenericIO::write() { // Second entry to write_cbx
   // I'm going to assume you always want to compress
   // Assumptions are bad bad bad.. By default you don't!
   bool ShouldCompress = DefaultShouldCompress;
-  if (Rank == 0) printf("Compress? %s\n", ShouldCompress ? "true" : "false");
+  /* if (Rank == 0) printf("Compress? %s\n", ShouldCompress ? "true" : "false"); */
   const char *EnvStr = getenv("GENERICIO_COMPRESS");
   if (EnvStr) {
     int Mod = atoi(EnvStr);
@@ -528,7 +528,7 @@ void GenericIO::write() { // Second entry to write_cbx
   vector<vector<unsigned char> > LocalCData;
   // Ignore because not compressing (and no else)
   if (NeedsBlockHeaders) {
-    if (Rank == 0) printf("Block headers\n");
+    /* if (Rank == 0) printf("Block headers\n"); */
     // Aha! We need to have added vars.
     LocalBlockHeaders.resize(Vars.size());
     LocalData.resize(Vars.size());
@@ -737,13 +737,13 @@ nocomp:
   FH.get()->open(LocalFileName);
 
   uint64_t Offset = RHLocal.Start;
-  if (Rank == 0) printf("%d\n", Vars.size());
+  /* if (Rank == 0) printf("%d\n", Vars.size()); */
   for (size_t i = 0; i < Vars.size(); ++i) {
-    if (Rank == 0) {
-      printf("Data3: %d\n", ((long *)(Vars[i].Data))[3]);
-      printf("Vars size: %d\n", Vars[i].Size);
-      printf("Vars nelems: %d\n", NElems);
-    }
+    /* if (Rank == 0) { */
+    /*   printf("Data3: %d\n", ((long *)(Vars[i].Data))[3]); */
+    /*   printf("Vars size: %d\n", Vars[i].Size); */
+    /*   printf("Vars nelems: %d\n", NElems); */
+    /* } */
 
     uint64_t WriteSize = NeedsBlockHeaders ?
                          LocalBlockHeaders[i].Size : NElems*Vars[i].Size;
@@ -1247,7 +1247,7 @@ size_t GenericIO::readNumElems(int EffRank) {
     DisableCollErrChecking = false;
     return TotalSize;
   }
-  printf("%d We are down here\n", EffRank);
+  /* printf("%d We are down here\n", EffRank); */
 
   if (FH.isBigEndian())
     return readNumElems<true>(EffRank);
@@ -1266,7 +1266,7 @@ size_t GenericIO::readNumElems(int EffRank) {
     /* _spin_for_gdb(); */
   }
 
-  printf("Effrank here is %d\n", EffRank);
+  /* printf("Effrank here is %d\n", EffRank); */
   openAndReadHeader(Redistributing ? MismatchRedistribute : MismatchAllowed,
                     EffRank, false);
 

@@ -1,6 +1,5 @@
 # distutils: language = c++
 import numpy as np
-
 cimport numpy as cnp
 cimport cython
 
@@ -84,21 +83,39 @@ cdef class GenericIO_:
         self._thisptr = new GenericIO(world.ob_mpi, filename, FIOT) # MPI
 
 
-    def write(self):
+    def write(self, cnp.ndarray toWrite):
         cdef int world_rank
         mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &world_rank)
 
-        cdef cnp.int64_t[:] x_data = np.arange(world_rank+1, dtype=np.int64)
-        self._thisptr.addScalarizedVariable(b"z", &x_data[0], 1,
-                (GenericIO.VariableFlags.VarHasExtraSpace & # No clue what this does
-                GenericIO.VariableFlags.VarIsPhysCoordX)) # or this...
-        # cdef cnp.int64_t[:] y_data = np.zeros(world_rank+1, dtype=np.int64)
-        # self._thisptr.addScalarizedVariable(b"y", &y_data[0], 1, 0)
-                # GenericIO.VariableFlags.VarHasExtraSpace)
-        self._thisptr.setNumElems(world_rank+1)
+        cdef int i
+        for i in range(len(toWrite.dtype)):
+            colname = toWrite.dtype.names[i]
+            colname_byt = bytes(colname, "utf-8")
+            contig = np.ascontiguousarray(toWrite[colname])
+            typ = toWrite.dtype[i].type
 
+            if typ is np.int32:
+                self._addVariable[cnp.int32_t](contig, colname_byt)
+            elif typ is np.int64:
+                self._addVariable[cnp.int64_t](contig, colname_byt)
+            elif typ is np.uint32:
+                self._addVariable[cnp.uint32_t](contig, colname_byt)
+            elif typ is np.uint64:
+                self._addVariable[cnp.uint64_t](contig, colname_byt)
+            elif typ is np.float32:
+                self._addVariable[cnp.float32_t](contig, colname_byt)
+            elif typ is np.float64:
+                self._addVariable[cnp.float64_t](contig, colname_byt)
+            else:
+                raise Exception("Type not allowed")
+            self._thisptr.setNumElems(len(toWrite))
 
         self._thisptr.write()
+
+    cdef _addVariable(self, gio_numeric [:] data, bytes colname):
+        self._thisptr.addScalarizedVariable(colname, &data[0], 1,
+                (GenericIO.VariableFlags.VarHasExtraSpace & # No clue what this does
+                GenericIO.VariableFlags.VarIsPhysCoordX)) # or this...
 
     def readHeader(self):
         self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)

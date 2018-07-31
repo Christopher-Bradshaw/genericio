@@ -1,0 +1,3 @@
+# Tests need this dir to write data into at the moment
+*
+!.gitignore

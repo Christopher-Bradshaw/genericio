@@ -210,5 +210,9 @@ clean:
 
 clean2:
 	rm  wrapper.c wrapper.cpp wrapper.so wrapper.cpython*
-pybuild_tmp: mpi/GenericIO.o wrapper.pyx
+pybuild_tmp: mpi/GenericIO.o python/wrapper.pyx
 	python3 setup.py build_ext --inplace --force
+
+.PHONY: pytest
+pytest_tmp:
+	mpirun -n 8 python3 python/test/basic.py

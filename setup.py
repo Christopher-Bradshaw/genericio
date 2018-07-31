@@ -26,8 +26,8 @@ os.environ["CXX"] = "mpicxx"
 setup(
         ext_modules = cythonize([
             Extension(
-                "mpi_wrapper",
-                sources=["wrapper.pyx"],
+                "python.mpi_wrapper",
+                sources=["./python/wrapper.pyx"],
                 language="c++",
                 extra_link_args=["-fopenmp", "-L/usr/lib64/openmpi/lib/" "-lmpi"],
                 extra_objects=[

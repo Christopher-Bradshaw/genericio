@@ -71,7 +71,7 @@ FE_CFLAGS := -g -fPIC -O3 $(OPENMPFLAG)
 FE_CPPFLAGS := $(BASE_CPPFLAGS) -Ithirdparty/sqlite -DGENERICIO_NO_MPI
 
 MPIDIR = mpi
-MPI_CFLAGS := -g -fPIC -O3 $(OPENMPFLAG)
+MPI_CFLAGS := -g -fPIC $(OPENMPFLAG) # Remember to put -O3 back. Removed for debugging
 MPI_CPPFLAGS := $(BASE_CPPFLAGS)
 
 $(FEDIR):
@@ -215,4 +215,6 @@ pybuild_tmp: mpi/GenericIO.o python/wrapper.pyx
 
 .PHONY: pytest
 pytest_tmp:
-	mpirun -n 8 python3 python/test/basic.py
+	# mpirun -n 8 python3 python/test/basic.py
+	# mpirun -n 8 python3 python/test/split_file.py
+	mpirun -n 4 python3 python/test/previous.py

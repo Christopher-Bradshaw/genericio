@@ -23,7 +23,6 @@ ctypedef fused gio_numeric:
 
 cdef extern from "../GenericIO.h" namespace "gio":
     cdef cppclass GenericIO:
-        GenericIO(void *c, string filename, unsigned int FIOT)
 
         # TODO: Work out why we need these string tags to be able to access these types
         # I currently have *no idea*...
@@ -49,28 +48,35 @@ cdef extern from "../GenericIO.h" namespace "gio":
             bint MaybePhysGhost
             size_t ElementSize
 
-        void openAndReadHeader(
-                MismatchBehavior MB,
-                int EffRank, bint CheckPartMap)
+        # Initialization
+        GenericIO(void *c, string filename, unsigned int FIOT)
+        void setDefaultShouldCompress(bint shouldCompress)
+        void setPartition(int partition)
 
-        int getNumberOfVariables()
-        long readTotalNumElems()
-        long readNRanks()
-        long readNumElems(int rank)
-        void getSourceRanks(vector[int] &SR);
-
+        # Variables
+        void setNumElems(size_t num_elems)
+        void addScalarizedVariable[T](string varname, T *data, size_t num_elems,
+                unsigned int flags)
+        void clearVariables()
         void getVariableInfo(vector[VariableInfo] &VI)
-        void readDims(int dims[3])
+
+        # Writing
+        void write()
+
+        # Reading
+        void openAndReadHeader(MismatchBehavior MB, int EffRank, bint CheckPartMap)
+        long readNRanks() # The number of ranks that wrote the file
+        long readNumElems(int rank)
         void readData(int EffRank, bint PrintStats, bint)
 
-        void addVariable(string varname, long *data, unsigned int flags)
-        void addScalarizedVariable[T](
-                string varname, T *data, size_t num_elems, unsigned int flags)
-        void clearVariables()
+        # Unused
+        # long readTotalNumElems()
+        # void getSourceRanks(vector[int] &SR);
 
-        # Writing is only defined when compiled for MPI
-        void write() # MPI
-        void setNumElems(size_t num_elems)
+        # void readDims(int dims[3])
+
+        # void addVariable(string varname, long *data, unsigned int flags)
+
 
 
 
@@ -78,12 +84,17 @@ cdef class GenericIO_:
     cdef GenericIO *_thisptr
 
     # TODO: what is FIOT?
-    def __cinit__(self, MPI.Comm world, str filename, unsigned int FIOT):
+    def __cinit__(self, MPI.Comm world, str filename, unsigned int FIOT,
+            bint should_compress = False, int partition = 0):
         self._thisptr = new GenericIO(
                 world.ob_mpi,
                 bytes(filename, "ascii"),
                 FIOT,
         )
+
+        self._thisptr.setDefaultShouldCompress(should_compress)
+        self._thisptr.setPartition(partition)
+
     def __dealloc__(self):
         del self._thisptr
 
@@ -151,14 +162,17 @@ cdef class GenericIO_:
                 colnames, header_cols["name"][col_index]))
 
         # Get info about the rows
-        cdef long num_ranks = self._thisptr.readNRanks()
-        cdef long my_start_rank = world_rank * num_ranks / world_size
-        cdef long my_end_rank = (world_rank+1) * num_ranks / world_size
+        cdef long num_writer_ranks = self._thisptr.readNRanks()
+        assert (world_size >= num_writer_ranks,
+            "Can't read with more ranks than were used to write")
+        # Which of those ranks this reader should read
+        # This could probably be ordered better if we know the topology is cartesian
+        cdef long my_start_rank = world_rank * (num_writer_ranks / world_size)
+        cdef long my_end_rank = (world_rank+1) * (num_writer_ranks / world_size)
         cdef long my_num_ranks = my_end_rank - my_start_rank
 
         cdef long [:] elems_in_rank = np.zeros(my_num_ranks, np.int64)
         cdef long rank
-        # This probably isn't great. The topology is cartesian so ...
         for rank in range(my_num_ranks):
             elems_in_rank[rank] = self._thisptr.readNumElems(my_start_rank + rank)
 
@@ -166,18 +180,14 @@ cdef class GenericIO_:
         cdef long extra_space = 5 # TODO why???
         cdef long max_rows = max(elems_in_rank) + extra_space
 
-
         cdef long idx
-        results = np.zeros(tot_rows, dtype=[
-            (
-                header_cols[idx]["name"],#.decode("utf-8"),
-                header_cols[idx]["type"],#.decode("utf-8"),
-            ) for idx in col_index])
+        results = np.zeros(tot_rows, dtype=
+                [(header_cols[idx]["name"], header_cols[idx]["type"]) for idx in col_index])
 
         cdef int field_count
         for idx in col_index:
             field_count = header_cols[idx]["size"] / header_cols[idx]["elemsize"]
-            colname_str = str(header_cols[idx]["name"]) # Currently is numpy.str_
+            colname_str = str(header_cols[idx]["name"]) # Previously was numpy.str_
 
             if header_cols[idx]["type"] == "f4":
                 self._loadData[cnp.float32_t](
@@ -214,7 +224,7 @@ cdef class GenericIO_:
         return results
 
     def readColumn(self, str colname):
-        return self.readColumns([colname])[colname]#.decode("utf-8")]
+        return self.readColumns([colname])[colname]
 
     # Private
     cdef _addVariable(self, gio_numeric [:] data, bytes colname):

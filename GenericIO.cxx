@@ -77,6 +77,23 @@ using namespace std;
 
 namespace gio {
 
+void _spin_for_gdb();
+void _spin_for_gdb() {
+    volatile int i = 0;
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
+    printf("PID %d on %s ready for attach\n", getpid(), hostname);
+    fflush(stdout);
+    while (0 == i)
+        sleep(5);
+    // Connect with gdb /path/to/prog pid
+    // Put a breakpoint after this func somewhere
+    // Go up a couple of frames and `set var i = 1`
+    // Continue
+}
+
+
+
 
 #ifndef GENERICIO_NO_MPI
 GenericFileIO_MPI::~GenericFileIO_MPI() {
@@ -511,6 +528,7 @@ void GenericIO::write() { // Second entry to write_cbx
   vector<vector<unsigned char> > LocalCData;
   // Ignore because not compressing (and no else)
   if (NeedsBlockHeaders) {
+    if (Rank == 0) printf("Block headers\n");
     // Aha! We need to have added vars.
     LocalBlockHeaders.resize(Vars.size());
     LocalData.resize(Vars.size());
@@ -882,7 +900,7 @@ void GenericIO::openAndReadHeader(MismatchBehavior MB, int EffRank, bool CheckPa
   if (EffRank == -1)
     EffRank = MB == MismatchRedistribute ? 0 : Rank;
 
-  if (RankMap.empty() && CheckPartMap) {
+  if (RankMap.empty() && CheckPartMap) { // We skip this because CheckPartMap is false (as is rankmap.empty())
     // First, check to see if the file is a rank map.
     unsigned long RanksInMap = 0;
     if (Rank == 0) {
@@ -916,7 +934,7 @@ void GenericIO::openAndReadHeader(MismatchBehavior MB, int EffRank, bool CheckPa
   }
 
 #ifndef GENERICIO_NO_MPI
-  if (SplitComm != MPI_COMM_NULL)
+  if (SplitComm != MPI_COMM_NULL) // We go into this... Don't know why but probably isn't that important?
     MPI_Comm_free(&SplitComm);
 #endif
 
@@ -937,11 +955,12 @@ void GenericIO::openAndReadHeader(MismatchBehavior MB, int EffRank, bool CheckPa
 #ifdef __bgq__
       MPI_Barrier(Comm);
 #endif
-      MPI_Comm_split(Comm, RankMap[EffRank], Rank, &SplitComm);
+      MPI_Comm_split(Comm, RankMap[EffRank], Rank, &SplitComm); // Aha! here we hang. Nope, jk this is collective just needed to debug the other process too.
     }
 #endif
   }
 
+  // Ok but here - in the 0-0 case Local is open and we are gtg. In every other case we continue.
   if (LocalFileName == OpenFileName)
     return;
   FH.close();
@@ -1028,7 +1047,7 @@ void GenericIO::openAndReadHeader(MismatchBehavior MB, int EffRank, bool CheckPa
 
 #ifndef GENERICIO_NO_MPI
   if (!DisableCollErrChecking)
-    MPI_Barrier(Comm);
+    MPI_Barrier(SplitComm); // I think this Comm vs SplitComm was the bug
 
   if (FileIOType == FileIOMPI)
     FH.get() = new GenericFileIO_MPI(SplitComm);
@@ -1041,11 +1060,11 @@ void GenericIO::openAndReadHeader(MismatchBehavior MB, int EffRank, bool CheckPa
   try {
     FH.get()->open(LocalFileName, true);
     MPI_Allreduce(&OpenErr, &TotOpenErr, 1, MPI_INT, MPI_SUM,
-                  DisableCollErrChecking ? MPI_COMM_SELF : Comm);
+                  DisableCollErrChecking ? MPI_COMM_SELF : SplitComm);
   } catch (...) {
     OpenErr = 1;
     MPI_Allreduce(&OpenErr, &TotOpenErr, 1, MPI_INT, MPI_SUM,
-                  DisableCollErrChecking ? MPI_COMM_SELF : Comm);
+                  DisableCollErrChecking ? MPI_COMM_SELF : SplitComm);
     throw;
   }
 
@@ -1228,6 +1247,7 @@ size_t GenericIO::readNumElems(int EffRank) {
     DisableCollErrChecking = false;
     return TotalSize;
   }
+  printf("%d We are down here\n", EffRank);
 
   if (FH.isBigEndian())
     return readNumElems<true>(EffRank);
@@ -1242,8 +1262,11 @@ size_t GenericIO::readNumElems(int EffRank) {
 #else
     EffRank = 0;
 #endif
+  } else {
+    /* _spin_for_gdb(); */
   }
 
+  printf("Effrank here is %d\n", EffRank);
   openAndReadHeader(Redistributing ? MismatchRedistribute : MismatchAllowed,
                     EffRank, false);
 

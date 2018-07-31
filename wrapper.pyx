@@ -1,4 +1,6 @@
 # distutils: language = c++
+# Not sure if this is even worth it... But I don't like seeing yellow!
+# Undo cython: cdivision=True, boundscheck=False
 import numpy as np
 cimport numpy as cnp
 cimport cython
@@ -75,22 +77,25 @@ cdef extern from "GenericIO.h" namespace "gio":
 cdef class GenericIO_:
     cdef GenericIO *_thisptr
 
-
-    def __cinit__(self, bytes filename, unsigned int FIOT, MPI.Comm world):
-        cdef int world_rank
-        mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &world_rank)
-
-        self._thisptr = new GenericIO(world.ob_mpi, filename, FIOT) # MPI
-
+    # TODO: what is FIOT?
+    def __cinit__(self, MPI.Comm world, str filename, unsigned int FIOT):
+        self._thisptr = new GenericIO(
+                world.ob_mpi,
+                bytes(filename, "ascii"),
+                FIOT,
+        )
+    def __dealloc__(self):
+        del self._thisptr
 
     def write(self, cnp.ndarray toWrite):
-        cdef int world_rank
-        mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &world_rank)
-
         cdef int i
+        cdef str colname
+        cdef bytes colname_byt
+        cdef type typ
+
         for i in range(len(toWrite.dtype)):
             colname = toWrite.dtype.names[i]
-            colname_byt = bytes(colname, "utf-8")
+            colname_byt = bytes(colname, "ascii")
             contig = np.ascontiguousarray(toWrite[colname])
             typ = toWrite.dtype[i].type
 
@@ -112,11 +117,6 @@ cdef class GenericIO_:
 
         self._thisptr.write()
 
-    cdef _addVariable(self, gio_numeric [:] data, bytes colname):
-        self._thisptr.addScalarizedVariable(colname, &data[0], 1,
-                (GenericIO.VariableFlags.VarHasExtraSpace & # No clue what this does
-                GenericIO.VariableFlags.VarIsPhysCoordX)) # or this...
-
     def readHeader(self):
         self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
         cdef vector[GenericIO.VariableInfo] vi
@@ -136,13 +136,19 @@ cdef class GenericIO_:
                     self._type_from_variable_info(vi[i]))
         return cols
 
-    def readColumns(self, colnames):
+    def readColumns(self, list colnames):
         cdef int world_rank, world_size
         mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &world_rank)
         mpi.MPI_Comm_size(mpi.MPI_COMM_WORLD, &world_size)
-        print("Reading as rank {} of {}".format(world_rank, world_size))
 
-        self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, world_rank, True)
+        cdef list colnames_byt = [bytes(cn, "ascii") for cn in colnames]
+
+        # Find the cols we are looking. Error if they don't exist
+        header_cols = self.readHeader()
+        col_index = np.where(np.isin(header_cols["name"], colnames_byt))[0]
+        if len(col_index) != len(colnames):
+            raise Exception("One or more cols not found: got {}, found {}".format(
+                colnames, header_cols["name"][col_index]))
 
         # Get info about the rows
         cdef long num_ranks = self._thisptr.readNRanks()
@@ -152,22 +158,16 @@ cdef class GenericIO_:
 
         cdef long [:] elems_in_rank = np.zeros(my_num_ranks, np.int64)
         cdef long rank
+        # This probably isn't great. The topology is cartesian so ...
         for rank in range(my_num_ranks):
-            # This hangs for rank 0 when trying to read rank 1 and for rank 1 immediately.
-            # It appears that you can only access your own rank??
             elems_in_rank[rank] = self._thisptr.readNumElems(my_start_rank + rank)
 
         cdef long tot_rows = sum(elems_in_rank)
         cdef long extra_space = 5 # TODO why???
         cdef long max_rows = max(elems_in_rank) + extra_space
 
-        # Info about the cols
-        header_cols = self.readHeader()
-        col_index = np.where(np.isin(header_cols["name"], colnames))[0]
-        if len(col_index) != len(colnames):
-            raise Exception("One or more cols not found: got {}, found {}".format(
-                colnames, header_cols["name"][col_index]))
 
+        cdef long idx
         results = np.zeros(tot_rows, dtype=[
             (
                 header_cols[idx]["name"].decode("utf-8"),
@@ -218,15 +218,21 @@ cdef class GenericIO_:
         return self.readColumns([colname])[colname.decode("utf-8")]
 
     # Private
+    cdef _addVariable(self, gio_numeric [:] data, bytes colname):
+        self._thisptr.addScalarizedVariable(colname, &data[0], 1,
+                (GenericIO.VariableFlags.VarHasExtraSpace & # No clue what this does
+                GenericIO.VariableFlags.VarIsPhysCoordX)) # or this...
+
     cdef _loadData(self, gio_numeric [:] rank_data, gio_numeric [:] results,
             bytes colname, int field_count,
-            long my_start_rank, long my_num_ranks, elems_in_rank):
+            long my_start_rank, long my_num_ranks, long [:] elems_in_rank):
 
         self._thisptr.clearVariables()
         self._thisptr.addScalarizedVariable(colname, &rank_data[0], field_count,
                 GenericIO.VariableFlags.VarHasExtraSpace)
 
         cdef long loc = 0
+        cdef long rank
         for rank in range(my_num_ranks):
             self._thisptr.readData(my_start_rank + rank, False, False)
             results[loc:loc + elems_in_rank[rank]] = rank_data[:elems_in_rank[rank]]

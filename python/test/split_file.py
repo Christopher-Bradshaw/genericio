@@ -18,9 +18,9 @@ comm = MPI.COMM_WORLD.Create_cart(
 f = os.path.dirname(os.path.abspath(__file__)) + "/_data/split_file"
 
 gio = wrapper.GenericIO_(comm, f,
-        # should_compress=True,
+        should_compress=True,
         partition=comm.Get_rank())
-in_data = np.zeros(10000, dtype=[("x", "i8"), ("y", "f8")])
+in_data = np.zeros(1000000, dtype=[("x", "i8"), ("y", "f8")])
 in_data["x"] = np.arange(len(in_data)) * (comm.Get_rank() + 1)
 in_data["y"] = np.sqrt(in_data["x"])
 

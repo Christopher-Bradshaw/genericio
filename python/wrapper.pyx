@@ -49,7 +49,7 @@ cdef extern from "../GenericIO.h" namespace "gio":
             size_t ElementSize
 
         # Initialization
-        GenericIO(void *c, string filename, unsigned int FIOT)
+        GenericIO(void *c, string filename) # Don't support the optional FIOT arg
         void setDefaultShouldCompress(bint shouldCompress)
         void setPartition(int partition)
 
@@ -84,12 +84,11 @@ cdef class GenericIO_:
     cdef GenericIO *_thisptr
 
     # TODO: what is FIOT?
-    def __cinit__(self, MPI.Comm world, str filename, unsigned int FIOT,
+    def __cinit__(self, MPI.Comm world, str filename,
             bint should_compress = False, int partition = 0):
         self._thisptr = new GenericIO(
                 world.ob_mpi,
                 bytes(filename, "ascii"),
-                FIOT,
         )
 
         self._thisptr.setDefaultShouldCompress(should_compress)

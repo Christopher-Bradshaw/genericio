@@ -17,7 +17,7 @@ comm = MPI.COMM_WORLD
 
 f = os.path.dirname(os.path.abspath(__file__)) + "/_data/split_file"
 
-gio = wrapper.GenericIO_(comm, f, 1)
+gio = wrapper.GenericIO_(comm, f)
         # should_compress=True, partition=comm.Get_rank())
 
 out_data = gio.readColumns(["x", "y"])

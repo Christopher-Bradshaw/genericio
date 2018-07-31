@@ -16,7 +16,7 @@ comm = MPI.COMM_WORLD.Create_cart(
 
 f = os.path.dirname(os.path.abspath(__file__)) + "/_data/basic"
 
-gio = wrapper.GenericIO_(comm, f, 1)
+gio = wrapper.GenericIO_(comm, f)
 in_data = np.zeros(comm.Get_rank() + 1, dtype=[("x", "f8"), ("y", "i8")])
 in_data["x"] = 1
 in_data["y"] = np.arange(comm.Get_rank() + 1)

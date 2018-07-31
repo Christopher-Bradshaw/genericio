@@ -10,9 +10,20 @@ The readme is my attempt to understand the code. This is complicated by the fact
 * What are the variable flags for either the extra space or the IsPhysCoordX
     * Why do we need the extra space on read? Why is it always just 8.
 * Can you append a column?
+* Using structured arrays makes a nice API but is horrible for performance because we keep needing to switch from column contiguous (gio) to row contiguous (numpy).
+* When reading with a different number of ranks to what was written, how should we partition ranks? There must be a way to easily get all nearby ranks.
+  * I suppose that this depends on how they were partitioned before. On read you should probably partition so that the ranks that wrote to the same file are read by the same rank?
+* Why is performance so much worse when reading the coreproperties vs the test data here.
+  * coreproperties was written with many more ranks (256 vs 8)
+  * coreproperties has many more variables (in the tests in both cases we only read 2)
 
 ## Partition
 
+We sometimes split COMM_WORLD into smaller groups. The partition arg determines which of these groups you belong in. By default there is just the global partition.
+
+The reason to do this is IO performance. Ideally you want to stripe your data over all of the storage devices on the computer. E.g. if you have 10 disks and a 100MB file, write 10MB to each disk. There might be a limit to the the number of drives you can stripe a single file over (or just a default). In that case you can break up your file into smaller files each of which will be striped.
+
+The example in the gio docs says: You want the number of files * the number of stripes per file to be roughly equal to the number of drives in the storage system. So for titan with ~1k OSTs (object storage targets) and 4 stripes per file you want to be writing ~250 files. See the [titan file system docs](https://www.olcf.ornl.gov/for-users/system-user-guides/titan/file-systems/) which describes Lustre (the file system) quite nicely.
 
 ## BigEndian
 

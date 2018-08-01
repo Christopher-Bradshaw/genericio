@@ -10,22 +10,21 @@ import pandas as pd
 
 f = os.path.dirname(os.path.abspath(__file__)) + "/_data/no_mpi"
 
-gio = generic_io.GenericIO_(f, None)
+gio = generic_io.Generic_IO(f, None)
 in_data = pd.DataFrame({
     "x": 1,
     "y": np.arange(10),
 })
 gio.write(in_data)
 
-out_headers = gio.readHeader()
+out_headers = gio.read_header()
 assert np.all(out_headers["name"] == np.array(["x", "y"]))
 
-out_data = gio.readColumns(["x", "y"])
+out_data = gio.read_columns(["x", "y"])
 assert out_data.equals(in_data)
 
-out_data = gio.readColumns(["x"])
+out_data = gio.read_columns(["x"])
 assert out_data["x"].equals(in_data["x"])
 
-out_data = gio.readColumn("x")
+out_data = gio.read_column("x")
 assert out_data.equals(in_data["x"])
-

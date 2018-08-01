@@ -90,10 +90,9 @@ cdef extern from "../GenericIO.h" namespace "gio":
 
 
 
-cdef class GenericIO_:
+cdef class Generic_IO:
     cdef GenericIO *_thisptr
 
-    # TODO: what is FIOT?
     def __cinit__(self, str filename, MPI.Comm world,
             bint should_compress = False, int partition = 0):
         if world is None:
@@ -109,39 +108,39 @@ cdef class GenericIO_:
     def __dealloc__(self):
         del self._thisptr
 
-    def write(self, toWrite):
-        assert type(toWrite) is pd.core.frame.DataFrame
+    def write(self, to_write):
+        assert type(to_write) is pd.core.frame.DataFrame
         cdef int i
         cdef str colname
         cdef type typ
 
         cdef list tmp = []
 
-        for i in range(len(toWrite.columns)):
-            colname = toWrite.columns[i]
-            data = toWrite[colname].values
+        for i in range(len(to_write.columns)):
+            colname = to_write.columns[i]
+            data = to_write[colname].values
             typ = data.dtype.type
             assert data.flags["C_CONTIGUOUS"]
 
             if typ is np.int32:
-                self._addVariable[cnp.int32_t](data, colname)
+                self._add_variable[cnp.int32_t](data, colname)
             elif typ is np.int64:
-                self._addVariable[cnp.int64_t](data, colname)
+                self._add_variable[cnp.int64_t](data, colname)
             elif typ is np.uint32:
-                self._addVariable[cnp.uint32_t](data, colname)
+                self._add_variable[cnp.uint32_t](data, colname)
             elif typ is np.uint64:
-                self._addVariable[cnp.uint64_t](data, colname)
+                self._add_variable[cnp.uint64_t](data, colname)
             elif typ is np.float32:
-                self._addVariable[cnp.float32_t](data, colname)
+                self._add_variable[cnp.float32_t](data, colname)
             elif typ is np.float64:
-                self._addVariable[cnp.float64_t](data, colname)
+                self._add_variable[cnp.float64_t](data, colname)
             else:
                 raise Exception("Type not allowed")
 
-        self._thisptr.setNumElems(len(toWrite))
+        self._thisptr.setNumElems(len(to_write))
         self._thisptr.write()
 
-    def readHeader(self):
+    def read_header(self):
         self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
         cdef vector[GenericIO.VariableInfo] vi
         self._thisptr.getVariableInfo(vi)
@@ -160,13 +159,13 @@ cdef class GenericIO_:
                     self._type_from_variable_info(vi[i]))
         return cols
 
-    def readColumns(self, list colnames):
+    def read_columns(self, list colnames):
         cdef int world_rank, world_size
         mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &world_rank)
         mpi.MPI_Comm_size(mpi.MPI_COMM_WORLD, &world_size)
 
         # Find the cols we are looking for. Error if they don't exist
-        header_cols = self.readHeader()
+        header_cols = self.read_header()
         col_index = np.where(np.isin(header_cols["name"], colnames))[0]
         if len(col_index) != len(colnames):
             raise Exception("One or more cols not found: got {}, found {}".format(
@@ -193,8 +192,6 @@ cdef class GenericIO_:
 
         cdef long idx
         results = pd.DataFrame()
-        # np.zeros(tot_rows, dtype=
-        #         [(header_cols[idx]["name"], header_cols[idx]["type"]) for idx in col_index])
 
         cdef int field_count
         for idx in col_index:
@@ -204,32 +201,32 @@ cdef class GenericIO_:
             data = results[colname_str].values
 
             if header_cols[idx]["type"] == "f4":
-                self._loadData[cnp.float32_t](
+                self._load_data[cnp.float32_t](
                         np.zeros(max_rows, "f4"), data,
                         colname_str, field_count,
                         my_start_rank, my_num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "f8":
-                self._loadData[cnp.float64_t](
+                self._load_data[cnp.float64_t](
                         np.zeros(max_rows, "f8"), data,
                         colname_str, field_count,
                         my_start_rank, my_num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "i4":
-                self._loadData[cnp.int32_t](
+                self._load_data[cnp.int32_t](
                         np.zeros(max_rows, "i4"), data,
                         colname_str, field_count,
                         my_start_rank, my_num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "i8":
-                self._loadData[cnp.int64_t](
+                self._load_data[cnp.int64_t](
                         np.zeros(max_rows, "i8"), data,
                         colname_str, field_count,
                         my_start_rank, my_num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "u4":
-                self._loadData[cnp.uint32_t](
+                self._load_data[cnp.uint32_t](
                         np.zeros(max_rows, "u4"), data,
                         colname_str, field_count,
                         my_start_rank, my_num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "u8":
-                self._loadData[cnp.uint64_t](
+                self._load_data[cnp.uint64_t](
                         np.zeros(max_rows, "u8"), data,
                         colname_str, field_count,
                         my_start_rank, my_num_ranks, elems_in_rank)
@@ -238,11 +235,11 @@ cdef class GenericIO_:
 
         return results
 
-    def readColumn(self, str colname):
-        return self.readColumns([colname])[colname]
+    def read_column(self, str colname):
+        return self.read_columns([colname])[colname]
 
     # Private
-    cdef _addVariable(self, gio_numeric [:] data, str colname):
+    cdef _add_variable(self, gio_numeric [:] data, str colname):
         self._thisptr.addScalarizedVariable(
                 bytes(colname, "ascii"),
                 &data[0],
@@ -252,7 +249,7 @@ cdef class GenericIO_:
                 # (GenericIO.VariableFlags.VarHasExtraSpace & # No clue what this does
                 # GenericIO.VariableFlags.VarIsPhysCoordX)) # or this...
 
-    cdef _loadData(self, gio_numeric [:] rank_data, gio_numeric [:] results,
+    cdef _load_data(self, gio_numeric [:] rank_data, gio_numeric [:] results,
             str colname, int field_count,
             long my_start_rank, long my_num_ranks, long [:] elems_in_rank):
 

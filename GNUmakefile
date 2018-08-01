@@ -209,7 +209,8 @@ clean:
 	# rm -rf frontend mpi python/genericio.pyc
 
 clean2:
-	rm  wrapper.c wrapper.cpp wrapper.so wrapper.cpython*
+	rm  python/wrapper.c python/wrapper.cpp pthon/*.so python/*cpython*
+
 pybuild_tmp: mpi/GenericIO.o python/wrapper.pyx
 	python3 setup.py build_ext --inplace --force
 

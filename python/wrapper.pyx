@@ -15,6 +15,7 @@ cimport numpy as cnp
 cimport cython
 
 # Very useful: https://github.com/mpi4py/mpi4py/tree/master/demo/cython
+from mpi4py import MPI
 from mpi4py cimport MPI
 from mpi4py.MPI cimport Intracomm as IntracommType
 from mpi4py cimport libmpi as mpi
@@ -93,8 +94,10 @@ cdef class GenericIO_:
     cdef GenericIO *_thisptr
 
     # TODO: what is FIOT?
-    def __cinit__(self, MPI.Comm world, str filename,
+    def __cinit__(self, str filename, MPI.Comm world,
             bint should_compress = False, int partition = 0):
+        if world is None:
+            world = MPI.COMM_WORLD
         self._thisptr = new GenericIO(
                 world.ob_mpi,
                 bytes(filename, "ascii"),

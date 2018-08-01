@@ -22,26 +22,29 @@ f = os.path.dirname(os.path.abspath(__file__)) + "/_data/split_file"
 gio = wrapper.GenericIO_(comm, f,
         should_compress=True,
         partition=comm.Get_rank())
-in_data = np.zeros(1000000, dtype=[("x", "i8"), ("y", "f8")])
-in_data["x"] = np.arange(len(in_data)) * (comm.Get_rank() + 1)
+
+
+data_len = 1000000
+
+in_data = pd.DataFrame({
+        "x": np.arange(data_len) * (comm.Get_rank() + 1),
+})
 in_data["y"] = np.sqrt(in_data["x"])
 
 
-toWrite = pd.DataFrame(in_data)
+gio.write(in_data)
 
-gio.write(toWrite)
+out_headers = gio.readHeader()
+assert np.all(out_headers["name"] == np.array(["x", "y"]))
 
-# out_headers = gio.readHeader()
-# assert np.all(out_headers["name"] == np.array(["x", "y"]))
+# Reading before we were done writing would be bad...
+MPI.COMM_WORLD.barrier()
 
-# # Reading before we were done writing would be bad...
-# MPI.COMM_WORLD.barrier()
+out_data = gio.readColumns(["x", "y"])
+assert out_data.equals(in_data)
 
-# out_data = gio.readColumns(["x", "y"])
-# assert np.all(out_data == in_data)
+out_data = gio.readColumns(["x"])
+assert out_data["x"].equals(in_data["x"])
 
-# out_data = gio.readColumns(["x"])
-# assert np.all(out_data["x"] == in_data["x"])
-
-# out_data = gio.readColumn("x")
-# assert np.all(out_data == in_data["x"])
+out_data = gio.readColumn("x")
+assert out_data.equals(in_data["x"])

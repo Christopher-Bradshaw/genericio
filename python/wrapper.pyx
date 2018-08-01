@@ -162,9 +162,7 @@ cdef class GenericIO_:
         mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &world_rank)
         mpi.MPI_Comm_size(mpi.MPI_COMM_WORLD, &world_size)
 
-        cdef list colnames_byt = [bytes(cn, "ascii") for cn in colnames]
-
-        # Find the cols we are looking. Error if they don't exist
+        # Find the cols we are looking for. Error if they don't exist
         header_cols = self.readHeader()
         col_index = np.where(np.isin(header_cols["name"], colnames))[0]
         if len(col_index) != len(colnames):
@@ -191,46 +189,50 @@ cdef class GenericIO_:
         cdef long max_rows = max(elems_in_rank) + extra_space
 
         cdef long idx
-        results = np.zeros(tot_rows, dtype=
-                [(header_cols[idx]["name"], header_cols[idx]["type"]) for idx in col_index])
+        results = pd.DataFrame()
+        # np.zeros(tot_rows, dtype=
+        #         [(header_cols[idx]["name"], header_cols[idx]["type"]) for idx in col_index])
 
         cdef int field_count
         for idx in col_index:
             field_count = header_cols[idx]["size"] / header_cols[idx]["elemsize"]
             colname_str = str(header_cols[idx]["name"]) # Previously was numpy.str_
+            results[colname_str] = np.zeros(tot_rows, dtype=header_cols[idx]["type"])
+            data = results[colname_str].values
 
             if header_cols[idx]["type"] == "f4":
                 self._loadData[cnp.float32_t](
-                        np.zeros(max_rows, "f4"), results[colname_str],
+                        np.zeros(max_rows, "f4"), data,
                         colname_str, field_count,
                         my_start_rank, my_num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "f8":
                 self._loadData[cnp.float64_t](
-                        np.zeros(max_rows, "f8"), results[colname_str],
+                        np.zeros(max_rows, "f8"), data,
                         colname_str, field_count,
                         my_start_rank, my_num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "i4":
                 self._loadData[cnp.int32_t](
-                        np.zeros(max_rows, "i4"), results[colname_str],
+                        np.zeros(max_rows, "i4"), data,
                         colname_str, field_count,
                         my_start_rank, my_num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "i8":
                 self._loadData[cnp.int64_t](
-                        np.zeros(max_rows, "i8"), results[colname_str],
+                        np.zeros(max_rows, "i8"), data,
                         colname_str, field_count,
                         my_start_rank, my_num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "u4":
                 self._loadData[cnp.uint32_t](
-                        np.zeros(max_rows, "u4"), results[colname_str],
+                        np.zeros(max_rows, "u4"), data,
                         colname_str, field_count,
                         my_start_rank, my_num_ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "u8":
                 self._loadData[cnp.uint64_t](
-                        np.zeros(max_rows, "u8"), results[colname_str],
+                        np.zeros(max_rows, "u8"), data,
                         colname_str, field_count,
                         my_start_rank, my_num_ranks, elems_in_rank)
             else:
                 raise Exception("Unknown type")
+
         return results
 
     def readColumn(self, str colname):

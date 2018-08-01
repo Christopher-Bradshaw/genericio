@@ -31,7 +31,6 @@ in_data = pd.DataFrame({
 })
 in_data["y"] = np.sqrt(in_data["x"])
 
-
 gio.write(in_data)
 
 out_headers = gio.readHeader()

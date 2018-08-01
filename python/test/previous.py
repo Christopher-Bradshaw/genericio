@@ -20,4 +20,4 @@ gio = wrapper.GenericIO_(comm, f)
 
 out_data = gio.readColumns(["x", "y"])
 print(len(out_data))
-print(out_data)
+print(out_data[:10])

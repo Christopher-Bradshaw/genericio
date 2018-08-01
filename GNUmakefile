@@ -217,4 +217,4 @@ pybuild_tmp: mpi/GenericIO.o python/wrapper.pyx
 pytest_tmp:
 	mpirun -n 8 python3 python/test/basic.py
 	mpirun -n 8 python3 python/test/split_file.py
-	mpirun -n 2 python3 python/test/previous.py
+	mpirun -n 4 python3 python/test/previous.py

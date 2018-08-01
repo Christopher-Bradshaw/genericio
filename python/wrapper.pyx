@@ -2,7 +2,15 @@
 # cython: profile=True
 # Not sure if this is even worth it... But I don't like seeing yellow!
 # Undo cython: cdivision=True, boundscheck=False
+
+# https://stackoverflow.com/questions/40845304
+import warnings
+warnings.filterwarnings("ignore", message="numpy.dtype size changed")
+warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
+
 import numpy as np
+import pandas as pd
+
 cimport numpy as cnp
 cimport cython
 
@@ -98,34 +106,34 @@ cdef class GenericIO_:
     def __dealloc__(self):
         del self._thisptr
 
-    def write(self, cnp.ndarray toWrite):
+    def write(self, toWrite):
+        assert type(toWrite) is pd.core.frame.DataFrame
         cdef int i
         cdef str colname
         cdef type typ
 
         cdef list tmp = []
 
-        for i in range(len(toWrite.dtype)):
-            colname = toWrite.dtype.names[i]
-            contig = np.ascontiguousarray(toWrite[colname])
-            typ = toWrite.dtype[i].type
+        for i in range(len(toWrite.columns)):
+            colname = toWrite.columns[i]
+            data = toWrite[colname].values
+            typ = data.dtype.type
+            assert data.flags["C_CONTIGUOUS"]
 
             if typ is np.int32:
-                self._addVariable[cnp.int32_t](contig, colname)
+                self._addVariable[cnp.int32_t](data, colname)
             elif typ is np.int64:
-                self._addVariable[cnp.int64_t](contig, colname)
+                self._addVariable[cnp.int64_t](data, colname)
             elif typ is np.uint32:
-                self._addVariable[cnp.uint32_t](contig, colname)
+                self._addVariable[cnp.uint32_t](data, colname)
             elif typ is np.uint64:
-                self._addVariable[cnp.uint64_t](contig, colname)
+                self._addVariable[cnp.uint64_t](data, colname)
             elif typ is np.float32:
-                self._addVariable[cnp.float32_t](contig, colname)
+                self._addVariable[cnp.float32_t](data, colname)
             elif typ is np.float64:
-                self._addVariable[cnp.float64_t](contig, colname)
+                self._addVariable[cnp.float64_t](data, colname)
             else:
                 raise Exception("Type not allowed")
-            # we need to prevent the mem for contig from being freed/reused before write
-            tmp.append(contig)
 
         self._thisptr.setNumElems(len(toWrite))
         self._thisptr.write()

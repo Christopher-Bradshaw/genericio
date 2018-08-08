@@ -4,7 +4,7 @@ import os
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
 from mpi4py import MPI
-import mpi_wrapper as wrapper
+import generic_io
 import numpy as np
 import pandas as pd
 
@@ -17,22 +17,22 @@ comm = MPI.COMM_WORLD.Create_cart(
 
 f = os.path.dirname(os.path.abspath(__file__)) + "/_data/basic"
 
-gio = wrapper.GenericIO_(comm, f)
+gio = generic_io.Generic_IO(f, comm)
 in_data = pd.DataFrame({
     "x": 1,
     "y": np.arange(comm.Get_rank() + 1),
 })
 gio.write(in_data)
 
-out_headers = gio.readHeader()
+out_headers = gio.read_header()
 assert np.all(out_headers["name"] == np.array(["x", "y"]))
 MPI.COMM_WORLD.barrier()
 
-out_data = gio.readColumns(["x", "y"])
+out_data = gio.read_columns(["x", "y"])
 assert out_data.equals(in_data)
 
-out_data = gio.readColumns(["x"])
+out_data = gio.read_columns(["x"])
 assert out_data["x"].equals(in_data["x"])
 
-out_data = gio.readColumn("x")
+out_data = gio.read_column("x")
 assert out_data.equals(in_data["x"])

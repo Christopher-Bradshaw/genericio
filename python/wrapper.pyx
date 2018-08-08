@@ -31,6 +31,10 @@ ctypedef fused gio_numeric:
     cnp.float64_t
     cnp.float32_t
 
+ctypedef fused container:
+    list
+    tuple
+
 cdef extern from "../GenericIO.h" namespace "gio":
     cdef cppclass GenericIO:
 
@@ -79,6 +83,8 @@ cdef extern from "../GenericIO.h" namespace "gio":
         long readNumElems(int rank)
         void readData(int EffRank, bint PrintStats, bint)
 
+        # Arb
+        size_t requestedExtraSpace()
         # Unused
         # long readTotalNumElems()
         # void getSourceRanks(vector[int] &SR);
@@ -92,9 +98,10 @@ cdef extern from "../GenericIO.h" namespace "gio":
 
 cdef class Generic_IO:
     cdef GenericIO *_thisptr
+    cdef bint verbose
 
     def __cinit__(self, str filename, MPI.Comm world,
-            bint should_compress = False, int partition = 0):
+            bint should_compress = False, int partition = 0, bint verbose = False):
         if world is None:
             world = MPI.COMM_WORLD
         self._thisptr = new GenericIO(
@@ -104,11 +111,15 @@ cdef class Generic_IO:
 
         self._thisptr.setDefaultShouldCompress(should_compress)
         self._thisptr.setPartition(partition)
+        self.verbose = verbose
 
     def __dealloc__(self):
         del self._thisptr
 
     def write(self, to_write):
+        if type(to_write) is np.ndarray:
+            to_write = pd.DataFrame(to_write)
+
         assert type(to_write) is pd.core.frame.DataFrame
         cdef int i
         cdef str colname
@@ -141,6 +152,8 @@ cdef class Generic_IO:
         self._thisptr.write()
 
     def read_header(self):
+        # This is a bit of a waste - all ranks read this file.
+        # Also I think I don't fully understand this rank option.
         self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
         cdef vector[GenericIO.VariableInfo] vi
         self._thisptr.getVariableInfo(vi)
@@ -159,10 +172,16 @@ cdef class Generic_IO:
                     self._type_from_variable_info(vi[i]))
         return cols
 
-    def read_columns(self, list colnames):
+    def read_columns(self, container colnames, ranks = None, bint as_numpy_array = False):
         cdef int world_rank, world_size
-        mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &world_rank)
         mpi.MPI_Comm_size(mpi.MPI_COMM_WORLD, &world_size)
+        assert (world_size >= self._thisptr.readNRanks(),
+            "Can't read with more ranks than were used to write")
+
+        # If not specified, read your own rank
+        mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &world_rank)
+        if ranks is None:
+            ranks = [world_rank]
 
         # Find the cols we are looking for. Error if they don't exist
         header_cols = self.read_header()
@@ -172,22 +191,15 @@ cdef class Generic_IO:
                 colnames, header_cols["name"][col_index]))
 
         # Get info about the rows
-        cdef long num_writer_ranks = self._thisptr.readNRanks()
-        assert (world_size >= num_writer_ranks,
-            "Can't read with more ranks than were used to write")
-        # Which of those ranks this reader should read
-        # This could probably be ordered better if we know the topology is cartesian
-        cdef long my_start_rank = world_rank * (num_writer_ranks / world_size)
-        cdef long my_end_rank = (world_rank+1) * (num_writer_ranks / world_size)
-        cdef long my_num_ranks = my_end_rank - my_start_rank
-
-        cdef long [:] elems_in_rank = np.zeros(my_num_ranks, np.int64)
+        cdef long [:] elems_in_rank = np.zeros(len(ranks), np.int64)
         cdef long rank
-        for rank in range(my_num_ranks):
-            elems_in_rank[rank] = self._thisptr.readNumElems(my_start_rank + rank)
+        for i in range(len(ranks)):
+            elems_in_rank[i] = self._thisptr.readNumElems(ranks[i])
 
         cdef long tot_rows = sum(elems_in_rank)
-        cdef long extra_space = 1 # TODO why???
+        # TODO why??? Also this is very important. Was having intermittant crashes with this == 5
+        # Why was it set to five? Wild guess
+        cdef long extra_space = self._thisptr.requestedExtraSpace()
         cdef long max_rows = max(elems_in_rank) + extra_space
 
         cdef long idx
@@ -204,45 +216,54 @@ cdef class Generic_IO:
                 self._load_data[cnp.float32_t](
                         np.zeros(max_rows, "f4"), data,
                         colname_str, field_count,
-                        my_start_rank, my_num_ranks, elems_in_rank)
+                        ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "f8":
                 self._load_data[cnp.float64_t](
                         np.zeros(max_rows, "f8"), data,
                         colname_str, field_count,
-                        my_start_rank, my_num_ranks, elems_in_rank)
+                        ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "i4":
                 self._load_data[cnp.int32_t](
                         np.zeros(max_rows, "i4"), data,
                         colname_str, field_count,
-                        my_start_rank, my_num_ranks, elems_in_rank)
+                        ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "i8":
                 self._load_data[cnp.int64_t](
                         np.zeros(max_rows, "i8"), data,
                         colname_str, field_count,
-                        my_start_rank, my_num_ranks, elems_in_rank)
+                        ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "u4":
                 self._load_data[cnp.uint32_t](
                         np.zeros(max_rows, "u4"), data,
                         colname_str, field_count,
-                        my_start_rank, my_num_ranks, elems_in_rank)
+                        ranks, elems_in_rank)
             elif header_cols[idx]["type"] == "u8":
                 self._load_data[cnp.uint64_t](
                         np.zeros(max_rows, "u8"), data,
                         colname_str, field_count,
-                        my_start_rank, my_num_ranks, elems_in_rank)
+                        ranks, elems_in_rank)
             else:
                 raise Exception("Unknown type")
 
+        if as_numpy_array:
+            recarr = results.to_records(index=False)
+            structarr = recarr.view(recarr.dtype.fields, np.ndarray)
+            return structarr
+
         return results
 
-    def read_column(self, str colname):
-        return self.read_columns([colname])[colname]
+    def read_column(self, str colname, ranks = None, bint as_numpy_array = False):
+        return self.read_columns([colname], ranks, as_numpy_array)[colname]
+
+    # return the number of writers a file had
+    def num_writers(self):
+        return self._thisptr.readNRanks()
 
     # Private
     cdef _add_variable(self, gio_numeric [:] data, str colname):
         self._thisptr.addScalarizedVariable(
                 bytes(colname, "ascii"),
-                &data[0],
+                &data[0] if len(data) else NULL, # handle empty input
                 1,
                 0,
         )
@@ -251,19 +272,24 @@ cdef class Generic_IO:
 
     cdef _load_data(self, gio_numeric [:] rank_data, gio_numeric [:] results,
             str colname, int field_count,
-            long my_start_rank, long my_num_ranks, long [:] elems_in_rank):
+            list ranks, long [:] elems_in_rank):
 
         self._thisptr.clearVariables()
         self._thisptr.addScalarizedVariable(
-                bytes(colname, "ascii"), &rank_data[0], field_count,
+                bytes(colname, "ascii"),
+                &rank_data[0],
+                field_count,
                 GenericIO.VariableFlags.VarHasExtraSpace)
+                # We don't need this here as we have extraSpace. But we might one day when
+                # I understand that...
+                # &rank_data[0] if len(rank_data) else NULL,
 
         cdef long loc = 0
         cdef long rank
-        for rank in range(my_num_ranks):
-            self._thisptr.readData(my_start_rank + rank, False, False)
-            results[loc:loc + elems_in_rank[rank]] = rank_data[:elems_in_rank[rank]]
-            loc += elems_in_rank[rank]
+        for i in range(len(ranks)):
+            self._thisptr.readData(ranks[i], self.verbose, self.verbose)
+            results[loc:loc + elems_in_rank[i]] = rank_data[:elems_in_rank[i]]
+            loc += elems_in_rank[i]
 
         return results
 

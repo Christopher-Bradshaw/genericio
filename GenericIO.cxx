@@ -78,6 +78,22 @@ using namespace std;
 namespace gio {
 
 
+void _spin_for_gdb();
+void _spin_for_gdb() {
+    volatile int i = 0;
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
+    printf("PID %d on %s ready for attach\n", getpid(), hostname);
+    fflush(stdout);
+    while (0 == i)
+        sleep(5);
+    // Connect with gdb /path/to/prog pid
+    // Put a breakpoint after this func somewhere
+    // Go up a couple of frames and `set var i = 1`
+    // Continue
+}
+
+
 
 
 #ifndef GENERICIO_NO_MPI
@@ -1311,6 +1327,10 @@ void GenericIO::readCoords(int Coords[3], int EffRank) {
 
 void GenericIO::readData(int EffRank, bool PrintStats, bool CollStats) {
   int Rank;
+  /* std::cout << "READING " << EffRank << "\n"; */
+  /* if (EffRank == 184) { */
+  /*     _spin_for_gdb(); */
+  /* } */
 #ifndef GENERICIO_NO_MPI
   MPI_Comm_rank(Comm, &Rank);
 #else
@@ -1554,7 +1574,7 @@ void GenericIO::readData(int EffRank, size_t RowOffset, int Rank,
 
       TotalReadSize += ReadSize;
 
-      uint64_t CRC = crc64_omp(Data, ReadSize);
+      uint64_t CRC = crc64_omp(Data, ReadSize); // Something deep in here is crashing.
       if (CRC != (uint64_t) -1) {
         ++NErrs[1];
 

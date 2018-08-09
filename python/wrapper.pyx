@@ -63,7 +63,7 @@ cdef extern from "../GenericIO.h" namespace "gio":
             size_t ElementSize
 
         # Initialization
-        GenericIO(void *c, string filename) # Don't support the optional FIOT arg
+        GenericIO(void *c, string filename) except +# Don't support the optional FIOT arg
         void setDefaultShouldCompress(bint shouldCompress)
         void setPartition(int partition)
 
@@ -99,6 +99,7 @@ cdef extern from "../GenericIO.h" namespace "gio":
 cdef class Generic_IO:
     cdef GenericIO *_thisptr
     cdef bint verbose
+    cdef bint header_is_read
 
     def __cinit__(self, str filename, MPI.Comm world,
             bint should_compress = False, int partition = 0, bint verbose = False):
@@ -111,7 +112,9 @@ cdef class Generic_IO:
 
         self._thisptr.setDefaultShouldCompress(should_compress)
         self._thisptr.setPartition(partition)
+
         self.verbose = verbose
+        self.header_is_read = False
 
     def __dealloc__(self):
         del self._thisptr
@@ -154,7 +157,10 @@ cdef class Generic_IO:
     def read_header(self):
         # This is a bit of a waste - all ranks read this file.
         # Also I think I don't fully understand this rank option.
-        self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
+        if not self.header_is_read:
+            self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
+            self.header_is_read = True
+
         cdef vector[GenericIO.VariableInfo] vi
         self._thisptr.getVariableInfo(vi)
 
@@ -173,6 +179,9 @@ cdef class Generic_IO:
         return cols
 
     def read_columns(self, container colnames, ranks = None, bint as_numpy_array = False):
+        # This always needs to go first
+        header_cols = self.read_header()
+
         cdef int world_rank, world_size
         mpi.MPI_Comm_size(mpi.MPI_COMM_WORLD, &world_size)
         assert (world_size >= self._thisptr.readNRanks(),
@@ -184,7 +193,6 @@ cdef class Generic_IO:
             ranks = [world_rank]
 
         # Find the cols we are looking for. Error if they don't exist
-        header_cols = self.read_header()
         col_index = np.where(np.isin(header_cols["name"], colnames))[0]
         if len(col_index) != len(colnames):
             raise Exception("One or more cols not found: got {}, found {}".format(
@@ -257,6 +265,9 @@ cdef class Generic_IO:
 
     # return the number of writers a file had
     def num_writers(self):
+        if not self.header_is_read:
+            self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
+            self.header_is_read = True
         return self._thisptr.readNRanks()
 
     # Private

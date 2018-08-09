@@ -219,3 +219,5 @@ pytest_tmp:
 	mpirun -n 8 python3 python/test/basic.py
 	mpirun -n 8 python3 python/test/split_file.py
 	mpirun -n 4 python3 python/test/previous.py
+	mpirun -n 4 python3 python/test/empty_cols.py
+	python3 python/test/no_mpi.py

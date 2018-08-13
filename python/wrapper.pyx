@@ -31,10 +31,6 @@ ctypedef fused gio_numeric:
     cnp.float64_t
     cnp.float32_t
 
-ctypedef fused container:
-    list
-    tuple
-
 cdef extern from "../GenericIO.h" namespace "gio":
     cdef cppclass GenericIO:
 
@@ -178,7 +174,7 @@ cdef class Generic_IO:
                     self._type_from_variable_info(vi[i]))
         return cols
 
-    def read_columns(self, container colnames, ranks = None, bint as_numpy_array = False):
+    def read_columns(self, colnames = None, ranks = None, bint as_numpy_array = False):
         # This always needs to go first
         header_cols = self.read_header()
 
@@ -193,6 +189,7 @@ cdef class Generic_IO:
             ranks = [world_rank]
 
         # Find the cols we are looking for. Error if they don't exist
+        colnames = colnames or header_cols["name"]
         col_index = np.where(np.isin(header_cols["name"], colnames))[0]
         if len(col_index) != len(colnames):
             raise Exception("One or more cols not found: got {}, found {}".format(

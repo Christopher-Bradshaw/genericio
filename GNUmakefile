@@ -71,7 +71,9 @@ FE_CFLAGS := -g -fPIC -O3 $(OPENMPFLAG)
 FE_CPPFLAGS := $(BASE_CPPFLAGS) -Ithirdparty/sqlite -DGENERICIO_NO_MPI
 
 MPIDIR = mpi
-MPI_CFLAGS := -g -fPIC $(OPENMPFLAG) # Remember to put -O3 back. Removed for debugging
+# -O3 removed for debugging
+# Openmp removed so I can run this fast with mpi locally (else with 2 mpi nodes with 4 cores each we thrash)
+MPI_CFLAGS := -g -fPIC # -O3 $(OPENMPFLAG)
 MPI_CPPFLAGS := $(BASE_CPPFLAGS)
 
 $(FEDIR):

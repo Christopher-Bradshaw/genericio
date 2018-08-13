@@ -31,6 +31,9 @@ MPI.COMM_WORLD.barrier()
 out_data = gio.read_columns(["x", "y"])
 assert out_data.equals(in_data)
 
+out_data = gio.read_columns()
+assert out_data.equals(in_data)
+
 out_data = gio.read_columns(["x"])
 assert out_data["x"].equals(in_data["x"])
 

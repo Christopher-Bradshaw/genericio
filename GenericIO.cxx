@@ -1053,7 +1053,7 @@ void GenericIO::openAndReadHeader(MismatchBehavior MB, int EffRank, bool CheckPa
 
 #ifndef GENERICIO_NO_MPI
   if (!DisableCollErrChecking)
-    MPI_Barrier(SplitComm); // I think this Comm vs SplitComm was the bug
+    MPI_Barrier(Comm); // I think this Comm vs SplitComm was the bug
 
   if (FileIOType == FileIOMPI)
     FH.get() = new GenericFileIO_MPI(SplitComm);
@@ -1066,11 +1066,11 @@ void GenericIO::openAndReadHeader(MismatchBehavior MB, int EffRank, bool CheckPa
   try {
     FH.get()->open(LocalFileName, true);
     MPI_Allreduce(&OpenErr, &TotOpenErr, 1, MPI_INT, MPI_SUM,
-                  DisableCollErrChecking ? MPI_COMM_SELF : SplitComm);
+                  DisableCollErrChecking ? MPI_COMM_SELF : Comm);
   } catch (...) {
     OpenErr = 1;
     MPI_Allreduce(&OpenErr, &TotOpenErr, 1, MPI_INT, MPI_SUM,
-                  DisableCollErrChecking ? MPI_COMM_SELF : SplitComm);
+                  DisableCollErrChecking ? MPI_COMM_SELF : Comm);
     throw;
   }
 

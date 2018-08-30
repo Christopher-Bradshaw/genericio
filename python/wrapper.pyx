@@ -81,6 +81,14 @@ cdef extern from "../GenericIO.h" namespace "gio":
 
         # Arb
         size_t requestedExtraSpace()
+
+        # Unclear/testing
+        void readCoords(int coords[3], int EffRank)
+        void readDims(int dims[3])
+        void readPhysOrigin(double orig[3])
+        void readPhysScale(double scale[3])
+        int readGlobalRankNumber(int EffRank)
+
         # Unused
         # long readTotalNumElems()
         # void getSourceRanks(vector[int] &SR);
@@ -114,6 +122,48 @@ cdef class Generic_IO:
 
     def __dealloc__(self):
         del self._thisptr
+
+    def read_meta(self, rank = None):
+        if not self.header_is_read:
+            self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
+            self.header_is_read = True
+
+        cdef int world_rank
+        if rank is None:
+            mpi.MPI_Comm_rank(mpi.MPI_COMM_WORLD, &world_rank)
+            ranks = world_rank
+
+        # Number of ranks
+        NR = self._thisptr.readNRanks()
+
+        # Coords
+        cdef int[3] coords = np.zeros(3, np.int32)
+        self._thisptr.readCoords(coords, rank)
+
+        # Dims
+        cdef int[3] dims = np.zeros(3, np.int32)
+        self._thisptr.readDims(dims)
+
+        # Orig
+        cdef double[3] orig = np.zeros(3, np.float64)
+        self._thisptr.readPhysOrigin(orig)
+
+        # Scale
+        cdef double[3] scale = np.zeros(3, np.float64)
+        self._thisptr.readPhysScale(scale)
+
+        # Global rank number
+        gr = self._thisptr.readGlobalRankNumber(rank)
+
+        # These aren't that well named
+        return {
+                "num_ranks": NR,
+                "coords": coords,
+                "dims": dims,
+                "origin": orig,
+                "scale": scale,
+                "global_rank": gr,
+        }
 
     def write(self, to_write):
         if type(to_write) is np.ndarray:
@@ -150,9 +200,8 @@ cdef class Generic_IO:
         self._thisptr.setNumElems(len(to_write))
         self._thisptr.write()
 
+    # Should maybe rename to something like read_variable_info
     def read_header(self):
-        # This is a bit of a waste - all ranks read this file.
-        # Also I think I don't fully understand this rank option.
         if not self.header_is_read:
             self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
             self.header_is_read = True

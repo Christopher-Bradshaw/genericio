@@ -200,6 +200,9 @@ mpi-progs: $(MPIDIR)/GenericIOPrint $(MPIDIR)/GenericIOVerify $(MPIDIR)/GenericI
 frontend-sqlite: $(FEDIR)/GenericIOSQLite.so $(FEDIR)/sqlite3
 fe-sqlite: frontend-sqlite
 
+$(MPIDIR)/thirdparty/blosc/combined_blosc.o: $(MPI_BLOSC_O)
+	ld -r -o $@ $^
+
 clean:
 	rm -rf frontend mpi python/genericio.pyc
 
@@ -207,7 +210,10 @@ clean:
 py_clean:
 	rm python/wrapper.c* python/*.so python/*cpython*
 
-py_build: mpi/GenericIO.o python/wrapper.pyx
+py_deps:
+	pip3 install cython mpi4py
+
+py_build: $(MPIDIR)/GenericIO.o python/wrapper.pyx $(MPIDIR)/thirdparty/blosc/combined_blosc.o
 	python3 setup.py build_ext --inplace --force
 
 py_test:

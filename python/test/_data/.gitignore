@@ -1,6 +1,5 @@
 # Ignore all files directly written in here (written by tests)
 *
 
-# But don't ignore the input director or the gitignore
-!input/07_13_17.AlphaQ.42.coreproperties
+# But don't ignore the gitignore
 !.gitignore

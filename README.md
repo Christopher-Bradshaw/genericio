@@ -20,7 +20,7 @@ If this all worked fine, you should see the GenericIO logs from the tests.
 
 ## API
 
-The tests are probably the easiest way to learn the API. A tiny example is:
+The tests are probably the easiest way to learn the API. To see all features that are supported you probably just need to read the [wrapper code](./python/wrapper.pyx). A tiny example is:
 
 ```
 import generic_io

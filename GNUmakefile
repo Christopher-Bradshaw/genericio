@@ -211,7 +211,7 @@ py_clean:
 	rm python/wrapper.c* python/*.so python/*cpython*
 
 py_deps:
-	pip3 install cython mpi4py
+	pip3 install numpy pandas cython mpi4py
 
 py_build: $(MPIDIR)/GenericIO.o python/wrapper.pyx $(MPIDIR)/thirdparty/blosc/combined_blosc.o
 	python3 python/setup.py build_ext --inplace --force

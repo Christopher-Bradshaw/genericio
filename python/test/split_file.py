@@ -39,7 +39,7 @@ gio.write(in_data)
 # Reading before we were done writing would be bad...
 MPI.COMM_WORLD.barrier()
 
-out_headers = gio.read_header()
+out_headers = gio.read_column_headers()
 assert np.all(out_headers["name"] == np.array(["x", "y"]))
 
 out_data = gio.read_columns(["x", "y"])

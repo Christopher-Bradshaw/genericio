@@ -223,3 +223,4 @@ pytest_tmp:
 	mpirun -n 4 python3 python/test/previous.py
 	mpirun -n 4 python3 python/test/empty_cols.py
 	python3 python/test/no_mpi.py
+	mpirun -n 4 python3 python/test/read_coords.py

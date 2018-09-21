@@ -1,3 +1,6 @@
-# Tests need this dir to write data into at the moment
+# Ignore all files directly written in here (written by tests)
 *
+
+# But don't ignore the input director or the gitignore
+!input/07_13_17.AlphaQ.42.coreproperties
 !.gitignore

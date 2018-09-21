@@ -17,7 +17,7 @@ in_data = pd.DataFrame({
 })
 gio.write(in_data)
 
-out_headers = gio.read_header()
+out_headers = gio.read_column_headers()
 assert np.all(out_headers["name"] == np.array(["x", "y"]))
 
 out_data = gio.read_columns(["x", "y"])

@@ -123,7 +123,7 @@ cdef class Generic_IO:
     def __dealloc__(self):
         del self._thisptr
 
-    def read_meta(self, rank = None):
+    def read_metadata(self, rank = None):
         if not self.header_is_read:
             self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
             self.header_is_read = True
@@ -200,8 +200,7 @@ cdef class Generic_IO:
         self._thisptr.setNumElems(len(to_write))
         self._thisptr.write()
 
-    # Should maybe rename to something like read_variable_info
-    def read_header(self):
+    def read_column_headers(self):
         if not self.header_is_read:
             self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
             self.header_is_read = True
@@ -225,7 +224,7 @@ cdef class Generic_IO:
 
     def read_columns(self, colnames = None, ranks = None, bint as_numpy_array = False):
         # This always needs to go first
-        header_cols = self.read_header()
+        header_cols = self.read_column_headers()
 
         cdef int world_rank, world_size
         mpi.MPI_Comm_size(mpi.MPI_COMM_WORLD, &world_size)

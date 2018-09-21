@@ -78,24 +78,6 @@ using namespace std;
 namespace gio {
 
 
-void _spin_for_gdb();
-void _spin_for_gdb() {
-    volatile int i = 0;
-    char hostname[256];
-    gethostname(hostname, sizeof(hostname));
-    printf("PID %d on %s ready for attach\n", getpid(), hostname);
-    fflush(stdout);
-    while (0 == i)
-        sleep(5);
-    // Connect with gdb /path/to/prog pid
-    // Put a breakpoint after this func somewhere
-    // Go up a couple of frames and `set var i = 1`
-    // Continue
-}
-
-
-
-
 #ifndef GENERICIO_NO_MPI
 GenericFileIO_MPI::~GenericFileIO_MPI() {
   (void) MPI_File_close(&FH);
@@ -382,7 +364,7 @@ std::size_t GenericIO::CollectiveMPIIOThreshold = 0;
 static bool blosc_initialized = false;
 
 #ifndef GENERICIO_NO_MPI
-void GenericIO::write() { // Entry point to write_cbx
+void GenericIO::write() {
   if (isBigEndian())
     write<true>();
   else
@@ -392,7 +374,7 @@ void GenericIO::write() { // Entry point to write_cbx
 // Note: writing errors are not currently recoverable (one rank may fail
 // while the others don't).
 template <bool IsBigEndian>
-void GenericIO::write() { // Second entry to write_cbx
+void GenericIO::write() {
   const char *Magic = IsBigEndian ? MagicBE : MagicLE;
 
   uint64_t FileSize = 0;
@@ -404,27 +386,13 @@ void GenericIO::write() { // Second entry to write_cbx
 #ifdef __bgq__
   MPI_Barrier(Comm);
 #endif
-  // Splits the group in Comm into separate groups that have the same
-  // "Color" (the partition arg). Ranks in the new `SplitComm` are determined
-  // by the "Key" (the rank arg). So in this case, larger ranks in the new comm
-  // come from larger ranks in the old comm.
-  // Where is partition defined? What does it mean?
-  // By default everything has the same color (see DefaultPartition = 0)
-  // and so the split is the same as comm
   MPI_Comm_split(Comm, Partition, Rank, &SplitComm);
 
   int SplitNRanks, SplitRank;
   MPI_Comm_rank(SplitComm, &SplitRank);
   MPI_Comm_size(SplitComm, &SplitNRanks);
-  /* if (Rank == 0) printf("Ranks %d, SplitRanks %d\n", NRanks, SplitNRanks); */
-
-  /* _spin_for_gdb(); // Need to do it after the split */
 
   string LocalFileName;
-  // If we have split - I guess sometimes all things are in the same partition
-  // and we don't.
-  // In the split case I **think** each partition writes to its own file and
-  // we read a header to find what goes where. Ignoring this complicated case for now...
   if (SplitNRanks != NRanks) {
     if (Rank == 0) {
       // In split mode, the specified file becomes the rank map, and the real
@@ -474,24 +442,16 @@ void GenericIO::write() { // Second entry to write_cbx
     stringstream ss;
     ss << FileName << "#" << Partition;
     LocalFileName = ss.str();
-  } else { // In the non split case our local file is just the file
+  } else {
     LocalFileName = FileName;
   }
 
-  // As suggested by the name, this is the header for this rank
-  // Contains info like num_elems, global rank, Coords, start?
   RankHeader<IsBigEndian> RHLocal;
   int Dims[3], Periods[3], Coords[3];
 
-  // Looks at the topology of the top level communicator (not the potentially split one)
-  // Topology is ... a bit confusing still. It gives some structure to the N ranks.
-  // And will presumably change where they are scheduled (ranks nearer in the topology
-  // even if they are far away in N should be put closer together).
-  // The sims live in a 3d cartesian world so we should use that.
   int TopoStatus;
   MPI_Topo_test(Comm, &TopoStatus);
   if (TopoStatus == MPI_CART) {
-      /* if (Rank == 0) printf("Yes, topo is cart\n"); */
     MPI_Cart_get(Comm, 3, Dims, Periods, Coords);
   } else {
     Dims[0] = NRanks;
@@ -501,23 +461,18 @@ void GenericIO::write() { // Second entry to write_cbx
     std::fill(Coords + 1, Coords + 3, 0);
   }
 
-  // Copy things into rank header
   std::copy(Coords, Coords + 3, RHLocal.Coords);
   RHLocal.NElems = NElems;
   RHLocal.Start = 0;
   RHLocal.GlobalRank = Rank;
 
-  // I'm going to assume you always want to compress
-  // Assumptions are bad bad bad.. By default you don't!
   bool ShouldCompress = DefaultShouldCompress;
-  /* if (Rank == 0) printf("Compress? %s\n", ShouldCompress ? "true" : "false"); */
   const char *EnvStr = getenv("GENERICIO_COMPRESS");
   if (EnvStr) {
     int Mod = atoi(EnvStr);
     ShouldCompress = (Mod > 0);
   }
 
-  // What are BlockHeaders? Have info like start, size, filters
   bool NeedsBlockHeaders = ShouldCompress;
   EnvStr = getenv("GENERICIO_FORCE_BLOCKS");
   if (!NeedsBlockHeaders && EnvStr) {
@@ -529,10 +484,7 @@ void GenericIO::write() { // Second entry to write_cbx
   vector<void *> LocalData;
   vector<bool> LocalHasExtraSpace;
   vector<vector<unsigned char> > LocalCData;
-  // Ignore because not compressing (and no else)
   if (NeedsBlockHeaders) {
-    /* if (Rank == 0) printf("Block headers\n"); */
-    // Aha! We need to have added vars.
     LocalBlockHeaders.resize(Vars.size());
     LocalData.resize(Vars.size());
     LocalHasExtraSpace.resize(Vars.size());
@@ -591,10 +543,6 @@ nocomp:
 
   double StartTime = MPI_Wtime();
 
-  // The zeroth process does some computation and scatters this info out to each rank
-  // These ranks gather it (see the `else` associated with this). Then each rank
-  // uses this info to spin up their own writer.
-  // We also write the headers at this point
   if (SplitRank == 0) {
     uint64_t HeaderSize = sizeof(GlobalHeader<IsBigEndian>) + Vars.size()*sizeof(VariableHeader<IsBigEndian>) +
                           SplitNRanks*sizeof(RankHeader<IsBigEndian>) + CRCSize;
@@ -728,7 +676,6 @@ nocomp:
   }
 
   MPI_Barrier(SplitComm);
-  // Everyone, spin up your own writer and write things!
 
   if (FileIOType == FileIOMPI)
     FH.get() = new GenericFileIO_MPI(SplitComm);
@@ -740,19 +687,9 @@ nocomp:
   FH.get()->open(LocalFileName);
 
   uint64_t Offset = RHLocal.Start;
-  /* if (Rank == 0) printf("%d\n", Vars.size()); */
   for (size_t i = 0; i < Vars.size(); ++i) {
-    /* if (Rank == 0) { */
-    /*   printf("Data3: %d\n", ((long *)(Vars[i].Data))[3]); */
-    /*   printf("Vars size: %d\n", Vars[i].Size); */
-    /*   printf("Vars nelems: %d\n", NElems); */
-    /* } */
-
     uint64_t WriteSize = NeedsBlockHeaders ?
                          LocalBlockHeaders[i].Size : NElems*Vars[i].Size;
-    // In Vars[i].Data the first 4 are corrupt. And because NeedsBlockHeaders is false, we haven't touched it
-    // at all in this func. It must have been corrupted in the add variable stage.
-    // But it wasn't...
     void *Data = NeedsBlockHeaders ? LocalData[i] : Vars[i].Data;
     uint64_t CRC = crc64_omp(Data, WriteSize);
     bool HasExtraSpace = NeedsBlockHeaders ?
@@ -785,7 +722,6 @@ nocomp:
   close();
   MPI_Barrier(Comm);
 
-  // Log stuff and cleanup
   double EndTime = MPI_Wtime();
   double TotalTime = EndTime - StartTime;
   double MaxTotalTime;
@@ -906,7 +842,7 @@ void GenericIO::openAndReadHeader(MismatchBehavior MB, int EffRank, bool CheckPa
   if (EffRank == -1)
     EffRank = MB == MismatchRedistribute ? 0 : Rank;
 
-  if (RankMap.empty() && CheckPartMap) { // We skip this because CheckPartMap is false (as is rankmap.empty())
+  if (RankMap.empty() && CheckPartMap) {
     // First, check to see if the file is a rank map.
     unsigned long RanksInMap = 0;
     if (Rank == 0) {
@@ -940,7 +876,7 @@ void GenericIO::openAndReadHeader(MismatchBehavior MB, int EffRank, bool CheckPa
   }
 
 #ifndef GENERICIO_NO_MPI
-  if (SplitComm != MPI_COMM_NULL) // We go into this... Don't know why but probably isn't that important?
+  if (SplitComm != MPI_COMM_NULL)
     MPI_Comm_free(&SplitComm);
 #endif
 
@@ -961,12 +897,11 @@ void GenericIO::openAndReadHeader(MismatchBehavior MB, int EffRank, bool CheckPa
 #ifdef __bgq__
       MPI_Barrier(Comm);
 #endif
-      MPI_Comm_split(Comm, RankMap[EffRank], Rank, &SplitComm); // Aha! here we hang. Nope, jk this is collective just needed to debug the other process too.
+      MPI_Comm_split(Comm, RankMap[EffRank], Rank, &SplitComm);
     }
 #endif
   }
 
-  // Ok but here - in the 0-0 case Local is open and we are gtg. In every other case we continue.
   if (LocalFileName == OpenFileName)
     return;
   FH.close();
@@ -1053,7 +988,7 @@ void GenericIO::openAndReadHeader(MismatchBehavior MB, int EffRank, bool CheckPa
 
 #ifndef GENERICIO_NO_MPI
   if (!DisableCollErrChecking)
-    MPI_Barrier(Comm); // I think this Comm vs SplitComm was the bug
+    MPI_Barrier(Comm);
 
   if (FileIOType == FileIOMPI)
     FH.get() = new GenericFileIO_MPI(SplitComm);
@@ -1253,7 +1188,6 @@ size_t GenericIO::readNumElems(int EffRank) {
     DisableCollErrChecking = false;
     return TotalSize;
   }
-  /* printf("%d We are down here\n", EffRank); */
 
   if (FH.isBigEndian())
     return readNumElems<true>(EffRank);
@@ -1268,11 +1202,8 @@ size_t GenericIO::readNumElems(int EffRank) {
 #else
     EffRank = 0;
 #endif
-  } else {
-    /* _spin_for_gdb(); */
   }
 
-  /* printf("Effrank here is %d\n", EffRank); */
   openAndReadHeader(Redistributing ? MismatchRedistribute : MismatchAllowed,
                     EffRank, false);
 
@@ -1327,10 +1258,6 @@ void GenericIO::readCoords(int Coords[3], int EffRank) {
 
 void GenericIO::readData(int EffRank, bool PrintStats, bool CollStats) {
   int Rank;
-  /* std::cout << "READING " << EffRank << "\n"; */
-  /* if (EffRank == 184) { */
-  /*     _spin_for_gdb(); */
-  /* } */
 #ifndef GENERICIO_NO_MPI
   MPI_Comm_rank(Comm, &Rank);
 #else
@@ -1574,7 +1501,7 @@ void GenericIO::readData(int EffRank, size_t RowOffset, int Rank,
 
       TotalReadSize += ReadSize;
 
-      uint64_t CRC = crc64_omp(Data, ReadSize); // Something deep in here is crashing.
+      uint64_t CRC = crc64_omp(Data, ReadSize);
       if (CRC != (uint64_t) -1) {
         ++NErrs[1];
 
@@ -1771,4 +1698,4 @@ void GenericIO::setNaturalDefaultPartition() {
 #endif
 }
 
-} /* END namespace gio */
+} /* END namespace cosmotk */

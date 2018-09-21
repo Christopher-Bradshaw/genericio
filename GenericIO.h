@@ -161,7 +161,6 @@ public:
 };
 } // namespace detail
 
-const int x = 2;
 class GenericIO {
 public:
   enum VariableFlags {
@@ -339,10 +338,6 @@ public:
       std::fill(PhysScale,  PhysScale + 3, S);
   }
 
-  // The two versions of addScalarizedVariable (and addVariable) allow it to be called
-  // With a T* Data and a vector<T> &Data. I still don't know what the A types does...
-  // I still don't know what the difference between addVariable and addScalarizedVariable are
-  // For one we seem to know the size - that seems about all?
   template <typename T>
   void addVariable(const std::string &Name, T *Data,
                    unsigned Flags = 0) {
@@ -364,13 +359,12 @@ public:
   template <typename T>
   void addScalarizedVariable(const std::string &Name, T *Data,
                              std::size_t NumElements, unsigned Flags = 0) {
-
     Vars.push_back(Variable(Name, NumElements, Data, Flags));
-    // Not borked here
   }
 
   template <typename T, typename A>
-  void addScalarizedVariable(const std::string &Name, std::vector<T, A> &Data, std::size_t NumElements, unsigned Flags = 0) {
+  void addScalarizedVariable(const std::string &Name, std::vector<T, A> &Data,
+                             std::size_t NumElements, unsigned Flags = 0) {
     T *D = Data.empty() ? 0 : &Data[0];
     addScalarizedVariable(Name, D, NumElements, Flags);
   }

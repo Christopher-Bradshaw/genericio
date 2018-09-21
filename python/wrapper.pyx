@@ -308,13 +308,6 @@ cdef class Generic_IO:
     def read_column(self, str colname, ranks = None, bint as_numpy_array = False):
         return self.read_columns([colname], ranks, as_numpy_array)[colname]
 
-    # return the number of writers a file had
-    def num_writers(self):
-        if not self.header_is_read:
-            self._thisptr.openAndReadHeader(GenericIO.MismatchBehavior.MismatchAllowed, -1, True)
-            self.header_is_read = True
-        return self._thisptr.readNRanks()
-
     # Private
     cdef _add_variable(self, gio_numeric [:] data, str colname):
         self._thisptr.addScalarizedVariable(

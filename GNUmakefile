@@ -71,9 +71,7 @@ FE_CFLAGS := -g -fPIC -O3 $(OPENMPFLAG)
 FE_CPPFLAGS := $(BASE_CPPFLAGS) -Ithirdparty/sqlite -DGENERICIO_NO_MPI
 
 MPIDIR = mpi
-# -O3 removed for debugging
-# Openmp removed so I can run this fast with mpi locally (else with 2 mpi nodes with 4 cores each we thrash)
-MPI_CFLAGS := -g -fPIC # -O3 $(OPENMPFLAG)
+MPI_CFLAGS := -g -fPIC -O3 $(OPENMPFLAG)
 MPI_CPPFLAGS := $(BASE_CPPFLAGS)
 
 $(FEDIR):
@@ -202,25 +200,20 @@ mpi-progs: $(MPIDIR)/GenericIOPrint $(MPIDIR)/GenericIOVerify $(MPIDIR)/GenericI
 frontend-sqlite: $(FEDIR)/GenericIOSQLite.so $(FEDIR)/sqlite3
 fe-sqlite: frontend-sqlite
 
-fe-blosc: $(FE_BLOSC_O)
-	ld -r $^ -o ./frontend/thirdparty/blosc/combined_blosc.o
-mpi-blosc: $(MPI_BLOSC_O)
-	ld -r $^ -o ./mpi/thirdparty/blosc/combined_blosc.o
-
 clean:
-	# rm -rf frontend mpi python/genericio.pyc
+	rm -rf frontend mpi python/genericio.pyc
 
-clean2:
-	rm  python/wrapper.c python/wrapper.cpp python/*.so python/*cpython*
+.PHONY: pytest pyclean
+py_clean:
+	rm python/wrapper.c* python/*.so python/*cpython*
 
-pybuild_tmp: mpi/GenericIO.o python/wrapper.pyx
+py_build: mpi/GenericIO.o python/wrapper.pyx
 	python3 setup.py build_ext --inplace --force
 
-.PHONY: pytest
-pytest_tmp:
+py_test:
 	mpirun -n 8 python3 python/test/basic.py
 	mpirun -n 8 python3 python/test/split_file.py
 	mpirun -n 4 python3 python/test/previous.py
 	mpirun -n 4 python3 python/test/empty_cols.py
 	python3 python/test/no_mpi.py
-	mpirun -n 4 python3 python/test/read_coords.py
+	# mpirun -n 4 python3 python/test/read_coords.py # relys on data I didn't want to push

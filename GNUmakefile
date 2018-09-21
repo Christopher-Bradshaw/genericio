@@ -214,7 +214,7 @@ py_deps:
 	pip3 install cython mpi4py
 
 py_build: $(MPIDIR)/GenericIO.o python/wrapper.pyx $(MPIDIR)/thirdparty/blosc/combined_blosc.o
-	python3 setup.py build_ext --inplace --force
+	python3 python/setup.py build_ext --inplace --force
 
 py_test:
 	mpirun -n 8 python3 python/test/basic.py

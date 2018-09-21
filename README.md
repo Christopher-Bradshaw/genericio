@@ -36,6 +36,6 @@ read_data = gio.read_columns() # Read all the data
 read_data = gio.read_columns(["x", "y"]) # Read only column x and y
 read_data = gio.read_column("x") # Read only column x
 
-metadata =gio.read_metadata() # Dict with General info about the gio file
+metadata = gio.read_metadata() # Dict with General info about the gio file
 # E.g. (number of ranks, location of origin, scale) etc
 ```

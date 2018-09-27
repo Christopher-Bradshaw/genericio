@@ -10,6 +10,7 @@ To install, make sure that you:
 1. Have pip installed (we need install some dependencies with pip, not conda)
 2. Are in a virtualenv (so pip doesn't try and fail to install in the root python dir)
 3. Have an mpi compiler and mpi headers available (e.g. via `module load ...`)
+4. Have the python headers available (as described [here](https://stackoverflow.com/questions/21530577/fatal-error-python-h-no-such-file-or-directory))
 
 Then run:
 

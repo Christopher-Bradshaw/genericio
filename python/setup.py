@@ -3,6 +3,7 @@ from Cython.Build import cythonize
 import numpy as np
 import os
 
+os.environ["CXX"] = "mpicxx"
 os.environ["CC"] = "mpicxx"
 setup(
         ext_modules = cythonize([

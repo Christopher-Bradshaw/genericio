@@ -6,7 +6,13 @@ This fork includes a python (N.B. only tested with python3) wrapper to the C++ a
 
 ## Getting started
 
-To install run:
+To install, make sure that you:
+1. Have pip installed (we need install some dependencies with pip, not conda)
+2. Are in a virtualenv (so pip doesn't try and fail to install in the root python dir)
+3. Have an mpi compiler and mpi headers available (e.g. via `module load ...`)
+
+Then run:
+
 ```
 make py_deps
 make py_build

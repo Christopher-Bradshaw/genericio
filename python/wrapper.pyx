@@ -38,16 +38,16 @@ cdef extern from "../GenericIO.h" namespace "gio":
         # I currently have *no idea*...
         # See https://github.com/cython/cython/issues/1603
         enum MismatchBehavior:
-            MismatchAllowed "gio::GenericIO::MismatchBehavior::MismatchAllowed",
-            MismatchDisallowed "gio::GenericIO::MismatchBehavior::MismatchDisallowed",
-            MismatchRedistribute "gio::GenericIO::MismatchBehavior::MismatchRedistribute",
+            MismatchAllowed "gio::GenericIO::MismatchAllowed",
+            MismatchDisallowed "gio::GenericIO::MismatchDisallowed",
+            MismatchRedistribute "gio::GenericIO::MismatchRedistribute",
 
         enum VariableFlags:
-            VarHasExtraSpace "gio::GenericIO::VariableFlags::VarHasExtraSpace" = (1 << 0),
-            VarIsPhysCoordX "gio::GenericIO::VariableFlags::VarIsPhysCoordX" = (1 << 1),
-            VarIsPhysCoordY "gio::GenericIO::VariableFlags::VarIsPhysCoordY" = (1 << 2),
-            VarIsPhysCoordZ "gio::GenericIO::VariableFlags::VarIsPhysCoordZ" = (1 << 3),
-            VarMaybePhysGhost "gio::GenericIO::VariableFlags::VarMaybePhysGhost" = (1 << 4),
+            VarHasExtraSpace "gio::GenericIO::VarHasExtraSpace" = (1 << 0),
+            VarIsPhysCoordX "gio::GenericIO::VarIsPhysCoordX" = (1 << 1),
+            VarIsPhysCoordY "gio::GenericIO::VarIsPhysCoordY" = (1 << 2),
+            VarIsPhysCoordZ "gio::GenericIO::VarIsPhysCoordZ" = (1 << 3),
+            VarMaybePhysGhost "gio::GenericIO::VarMaybePhysGhost" = (1 << 4),
 
         struct VariableInfo:
             string Name

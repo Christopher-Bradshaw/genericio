@@ -2,8 +2,9 @@
 import sys
 import os
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
-import generic_io
 
+from mpi4py import MPI # This is unused but I think tests fail on ALCF without it
+import generic_io
 import numpy as np
 import pandas as pd
 
